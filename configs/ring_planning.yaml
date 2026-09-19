@@ -1,0 +1,12 @@
+experiment: ring_planning
+seed: 0
+K: [64, 128, 256, 512, 1024]
+gamma: 0.95
+action_cost: 0.05
+temperature: [0.05, 0.1, 0.2]
+poisson_mean: [0.5, 2.0, 8.0]
+epsilon: [0.2, 0.1, 0.05]
+delta: 0.05
+anchor_uniform_mass: 0.05
+paired_seeds: 30
+

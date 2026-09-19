@@ -1,0 +1,12 @@
+experiment: numerics
+seed: 0
+graph:
+  family: cycle
+  K: 12
+  edge_weight: 1.0
+heat:
+  diffusion_time: 0.75
+  radius: 8
+backup:
+  temperature: 0.2
+

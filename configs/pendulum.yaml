@@ -1,0 +1,12 @@
+experiment: pendulum
+seed: 0
+environment: Pendulum-v1
+K: [51, 101, 201, 401, 801]
+heat_scalings: [index_heat, physical_heat]
+gamma: 0.99
+reward_scale: 16.2736044
+temperature: [0.02, 0.05, 0.1]
+development_grid: [129, 129]
+validation_grid: [257, 257]
+reference_tolerance: 0.001
+

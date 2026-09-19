@@ -1,0 +1,6 @@
+experiment: resistance
+seed: 0
+graph_family: two_cluster_weak_bridge
+temperature: 0.1
+finite_difference_steps: [0.1, 0.03, 0.01, 0.003, 0.001]
+
