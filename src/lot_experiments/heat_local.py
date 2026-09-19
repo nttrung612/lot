@@ -180,21 +180,37 @@ def local_truncated_heat_column(
 
 @dataclass
 class LazyTruncatedHeat:
-    """Per-column cache exposing cold-start and amortized cache statistics."""
+    """Sparse per-column cache exposing cold-start and amortized statistics.
+
+    Cached columns store only positive support entries.  ``column`` reconstructs
+    a dense vector for compatibility; local planners should use
+    :meth:`sparse_column` to avoid accumulating a hidden ``K x K`` allocation.
+    """
 
     graph: ActionGraph
     diffusion_time: float
     radius: int
     nu_u: float | None = None
     counter: OperationCounters = field(default_factory=OperationCounters)
-    _cache: dict[int, FloatArray] = field(default_factory=dict, init=False, repr=False)
+    _cache: dict[int, tuple[NDArray[np.int64], FloatArray]] = field(
+        default_factory=dict, init=False, repr=False
+    )
     cache_hits: int = 0
     cache_misses: int = 0
 
     def column(self, anchor: int) -> FloatArray:
+        support, probabilities = self.sparse_column(anchor)
+        column = np.zeros(self.graph.K, dtype=np.float64)
+        column[support] = probabilities
+        return column
+
+    def sparse_column(self, anchor: int) -> tuple[NDArray[np.int64], FloatArray]:
+        """Return positive indices and weights without a dense column."""
+
         if anchor in self._cache:
             self.cache_hits += 1
-            return self._cache[anchor].copy()
+            support, probabilities = self._cache[anchor]
+            return support.copy(), probabilities.copy()
         self.cache_misses += 1
         with self.counter.time_geometry():
             column = local_truncated_heat_column(
@@ -205,8 +221,10 @@ class LazyTruncatedHeat:
                 nu_u=self.nu_u,
                 counter=self.counter,
             )
-        self._cache[anchor] = column
-        return column.copy()
+        support = np.flatnonzero(column > 0.0).astype(np.int64, copy=False)
+        probabilities = column[support].copy()
+        self._cache[anchor] = (support.copy(), probabilities.copy())
+        return support, probabilities
 
     @property
     def cached_columns(self) -> int:

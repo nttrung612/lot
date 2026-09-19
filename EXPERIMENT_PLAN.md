@@ -597,7 +597,7 @@ Appendix:
 - [ ] M1: Exact and truncated heat kernels validated on small graphs.
 - [ ] M2: Kernel design-map experiment complete with Figure 1 draft.
 - [ ] M3: Sharp pruning and Poisson-truncation experiment complete.
-- [ ] M4: Ring environment, dense references, and baseline planners implemented.
+- [x] M4: Ring environment, dense references, and baseline planners implemented.
 - [ ] M5: End-to-end synthetic planning results complete.
 - [ ] M6: Reward-free learned-geometry experiment complete.
 - [ ] M7: Pendulum wrapper and converged reference solution complete.

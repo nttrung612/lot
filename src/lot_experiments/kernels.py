@@ -144,6 +144,38 @@ def exact_heat_columns(
     return _clean_probability_columns(result, tolerance)
 
 
+def diffusion_distance_gibbs_kernel(
+    laplacian: ArrayLike | sparse.spmatrix,
+    diffusion_time: float,
+    lambda_: float,
+    *,
+    batch_size: int = 128,
+) -> tuple[FloatArray, float, FloatArray]:
+    """Uniform-prior Gibbs columns from squared diffusion distance.
+
+    This kernel is a different LOT target from direct heat.  It lives in the
+    numerical-kernel module so planning code need not depend on an experiment
+    runner.
+    """
+
+    if lambda_ <= 0.0 or not math.isfinite(lambda_):
+        raise ValueError("lambda_ must be finite and positive")
+    heat_twice = exact_heat_columns(
+        laplacian, 2.0 * diffusion_time, batch_size=batch_size
+    )
+    diagonal = np.diag(heat_twice).copy()
+    costs = -2.0 * heat_twice
+    costs += diagonal[:, None]
+    costs += diagonal[None, :]
+    np.maximum(costs, 0.0, out=costs)
+    cost_max = float(costs.max(initial=0.0))
+    log_weights = -costs / lambda_
+    log_weights -= np.max(log_weights, axis=0, keepdims=True)
+    weights = np.exp(log_weights)
+    weights /= weights.sum(axis=0, keepdims=True)
+    return weights, cost_max, diagonal
+
+
 def uniformized_random_walk(
     laplacian: ArrayLike | sparse.spmatrix,
     nu_u: float | None = None,

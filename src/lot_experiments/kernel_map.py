@@ -36,6 +36,7 @@ from lot_experiments.heat_local import (
     local_truncated_heat_columns,
 )
 from lot_experiments.kernels import (
+    diffusion_distance_gibbs_kernel,
     exact_heat_column,
     exact_heat_columns,
     poisson_tail,
@@ -227,31 +228,6 @@ def high_mass_ball_radii(
         anchor_radii = np.searchsorted(cumulative, targets, side="left")
         radii = np.maximum(radii, anchor_radii)
     return radii
-
-
-def diffusion_distance_gibbs_kernel(
-    laplacian: Any,
-    diffusion_time: float,
-    lambda_: float,
-    *,
-    batch_size: int,
-) -> tuple[FloatArray, float, FloatArray]:
-    """Uniform-prior Gibbs kernel from squared diffusion distance."""
-
-    heat_twice = exact_heat_columns(
-        laplacian, 2.0 * diffusion_time, batch_size=batch_size
-    )
-    diagonal = np.diag(heat_twice).copy()
-    heat_twice *= -2.0
-    heat_twice += diagonal[:, None]
-    heat_twice += diagonal[None, :]
-    np.maximum(heat_twice, 0.0, out=heat_twice)
-    cost_max = float(heat_twice.max(initial=0.0))
-    heat_twice *= -1.0 / lambda_
-    heat_twice -= np.max(heat_twice, axis=0, keepdims=True)
-    np.exp(heat_twice, out=heat_twice)
-    heat_twice /= heat_twice.sum(axis=0, keepdims=True)
-    return heat_twice, cost_max, diagonal
 
 
 def _median_seconds(function: Callable[[], Any], repeats: int) -> float:

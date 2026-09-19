@@ -3,13 +3,15 @@
 Numerical experiments for **What Action Geometry Buys: A Design Space for
 Optimal-Transport Bellman Backups**.
 
-The repository currently implements milestones M0-M3: configuration loading,
+The repository currently implements milestones M0-M4: configuration loading,
 result validation, graph construction, exact and normalized finite-walk heat
 kernels, reusable Poisson-tail certificates, stable LOT backups, lazy local
 heat columns, operation accounting, and deterministic validation on all planned
 small graph families, the kernel design-map experiment with a Figure 1 draft,
-and the sharp-pruning/Poisson-truncation experiment with a Figure 2 draft.
-Later planning and learning sweeps are not yet implemented.
+the sharp-pruning/Poisson-truncation experiment with a Figure 2 draft, and the
+stochastic ring-control environment with dense target references and baseline
+planners. The end-to-end ring sweep and later learning studies are not yet
+implemented.
 
 ## Setup and checks
 
@@ -42,3 +44,8 @@ results. Experiment raw, summary, and figure artifacts belong in `outputs/raw/`,
 - M3 fixed-set pruning keeps exact heat as the target and never renormalizes
   retained weights. Poisson truncation is labeled as a distinct truncated-heat
   target and reports kernel, backup, and fixed-point errors to FullExactHeat.
+- M4 keeps the MDP kernel `P` inside `RingControlMDP` and passes the action graph
+  separately. `FullExactHeat` is the dense reference; MaxEnt, hard max,
+  diffusion-Gibbs, and permuted-graph solutions retain distinct target labels.
+  Local finite-walk caches store sparse column supports rather than a hidden
+  dense heat matrix.
