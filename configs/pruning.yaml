@@ -1,6 +1,54 @@
 experiment: pruning
 seed: 0
-span_over_temperature: [1, 2, 4, 8]
-radii: [0, 1, 2, 3, 4, 5, 6, 7, 8]
 temperature: 0.1
+span_over_temperature: [1, 2, 4, 8]
+numerical_tolerance: 1.0e-10
+benchmark_threads: 1
 
+worst_case:
+  graph:
+    family: cycle
+    K: 41
+  poisson_mean: 2.0
+  anchor: 0
+  alpha: [0.4, 0.2, 0.1, 0.05, 0.02, 0.01]
+
+typical:
+  graphs:
+    - family: cycle
+      K: 25
+      anchor: 0
+    - family: grid
+      rows: 6
+      columns: 6
+  poisson_mean: 2.0
+  subset_radii: [0, 1, 2, 3, 4, 5]
+  repetitions: 100
+  field_smoothing_time: 1.0
+
+poisson_truncation:
+  graphs:
+    - family: path
+      K: 25
+    - family: cycle
+      K: 25
+    - family: grid
+      rows: 5
+      columns: 5
+  poisson_mean: [0.5, 2.0, 8.0]
+  r_max: 20
+  fixed_point:
+    state_count: 5
+    gamma: 0.9
+    tolerance: 1.0e-12
+    max_iterations: 10000
+    root_state: 0
+
+raw_output: outputs/raw/pruning.parquet
+summary_output: outputs/summaries/pruning.csv
+figure_png: outputs/figures/figure2_pruning.png
+figure_pdf: outputs/figures/figure2_pruning.pdf
+figure:
+  typical_span_over_temperature: 4.0
+  truncation_graph_family: cycle
+  truncation_poisson_mean: 2.0

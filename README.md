@@ -3,12 +3,13 @@
 Numerical experiments for **What Action Geometry Buys: A Design Space for
 Optimal-Transport Bellman Backups**.
 
-The repository currently implements milestones M0-M2: configuration loading,
+The repository currently implements milestones M0-M3: configuration loading,
 result validation, graph construction, exact and normalized finite-walk heat
 kernels, reusable Poisson-tail certificates, stable LOT backups, lazy local
 heat columns, operation accounting, and deterministic validation on all planned
-small graph families, and the kernel design-map experiment with a Figure 1
-draft. Later planning and learning sweeps are not yet implemented.
+small graph families, the kernel design-map experiment with a Figure 1 draft,
+and the sharp-pruning/Poisson-truncation experiment with a Figure 2 draft.
+Later planning and learning sweeps are not yet implemented.
 
 ## Setup and checks
 
@@ -19,11 +20,12 @@ uv sync
 uv run pytest -q
 uv run python scripts/check_numerics.py --config configs/numerics.yaml
 uv run python scripts/run_kernel_map.py --config configs/kernel_map.yaml
+uv run python scripts/run_pruning.py --config configs/pruning.yaml
 uv run python scripts/make_all_figures.py
 ```
 
 The diagnostic is deliberately small (`K <= 16`) and does not write experiment
-results. Future raw, summary, and figure artifacts belong in `outputs/raw/`,
+results. Experiment raw, summary, and figure artifacts belong in `outputs/raw/`,
 `outputs/summaries/`, and `outputs/figures/`, respectively.
 
 ## Numerical conventions
@@ -37,3 +39,6 @@ results. Future raw, summary, and figure artifacts belong in `outputs/raw/`,
   both the exact-kernel budget `alpha` and the distinct Poisson tail `beta_r`
   are stored in every truncated result row.
 - M2 runtime measurements force one process and single-threaded BLAS.
+- M3 fixed-set pruning keeps exact heat as the target and never renormalizes
+  retained weights. Poisson truncation is labeled as a distinct truncated-heat
+  target and reports kernel, backup, and fixed-point errors to FullExactHeat.
