@@ -3,11 +3,11 @@
 Numerical experiments for **What Action Geometry Buys: A Design Space for
 Optimal-Transport Bellman Backups**.
 
-The repository currently implements milestone M0: configuration loading,
+The repository currently implements milestones M0-M1: configuration loading,
 result validation, graph construction, exact and normalized finite-walk heat
-kernels, stable LOT backups, lazy local heat columns, operation accounting,
-and small deterministic numerical checks. Large experiment sweeps are not yet
-implemented.
+kernels, reusable Poisson-tail certificates, stable LOT backups, lazy local
+heat columns, operation accounting, and deterministic validation on all planned
+small graph families. Large experiment sweeps are not yet implemented.
 
 ## Setup and checks
 
@@ -30,4 +30,3 @@ results. Future raw, summary, and figure artifacts belong in `outputs/raw/`,
 - Direct heat uses the centered backup (zero anchor offsets).
 - Cost-based LOT retains the prior-mass offsets from Equation (19) of the paper.
 - Pruned backup weights are not renormalized in the value.
-

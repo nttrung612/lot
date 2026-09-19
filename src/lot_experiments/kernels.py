@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -16,10 +17,41 @@ from scipy.stats import poisson
 FloatArray = NDArray[np.float64]
 
 
-def _as_square_laplacian(laplacian: ArrayLike | sparse.spmatrix) -> sparse.csr_matrix:
+@dataclass(frozen=True)
+class HeatApproximationCertificate:
+    """Observed exact-vs-truncated error and the Poisson-tail certificate."""
+
+    column_l1_errors: FloatArray
+    max_column_l1_error: float
+    beta_r: float
+    l1_bound: float
+    tolerance: float
+    holds: bool
+
+
+def _as_square_laplacian(
+    laplacian: ArrayLike | sparse.spmatrix, *, tolerance: float = 1e-12
+) -> sparse.csr_matrix:
     matrix = sparse.csr_matrix(laplacian, dtype=np.float64)
-    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
-        raise ValueError("laplacian must be square")
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1] or matrix.shape[0] == 0:
+        raise ValueError("laplacian must be nonempty and square")
+    if matrix.nnz and not np.all(np.isfinite(matrix.data)):
+        raise ValueError("laplacian entries must be finite")
+    difference = matrix - matrix.T
+    if difference.nnz and np.max(np.abs(difference.data)) > tolerance:
+        raise ValueError("laplacian must be symmetric")
+    diagonal = matrix.diagonal()
+    if np.min(diagonal, initial=0.0) < -tolerance:
+        raise ValueError("laplacian diagonal must be nonnegative")
+    off_diagonal = matrix.copy()
+    off_diagonal.setdiag(0.0)
+    off_diagonal.eliminate_zeros()
+    if off_diagonal.nnz and np.max(off_diagonal.data) > tolerance:
+        raise ValueError("laplacian off-diagonal entries must be nonpositive")
+    row_sums = np.asarray(matrix.sum(axis=1)).ravel()
+    scale = max(1.0, float(np.max(np.abs(diagonal), initial=0.0)))
+    if np.max(np.abs(row_sums), initial=0.0) > tolerance * scale:
+        raise ValueError("laplacian rows must sum to zero")
     return matrix
 
 
@@ -46,8 +78,8 @@ def exact_heat_kernel(
     reference. Local algorithms use :mod:`lot_experiments.heat_local`.
     """
 
-    if diffusion_time < 0:
-        raise ValueError("diffusion_time must be nonnegative")
+    if diffusion_time < 0 or not math.isfinite(diffusion_time):
+        raise ValueError("diffusion_time must be finite and nonnegative")
     matrix = _as_square_laplacian(laplacian)
     heat = expm(-diffusion_time * matrix.toarray())
     return _clean_probability_columns(heat, tolerance)
@@ -62,8 +94,8 @@ def exact_heat_column(
 ) -> FloatArray:
     """Compute one exact heat column without materializing the full heat matrix."""
 
-    if diffusion_time < 0:
-        raise ValueError("diffusion_time must be nonnegative")
+    if diffusion_time < 0 or not math.isfinite(diffusion_time):
+        raise ValueError("diffusion_time must be finite and nonnegative")
     matrix = _as_square_laplacian(laplacian)
     if not 0 <= anchor < matrix.shape[0]:
         raise IndexError(anchor)
@@ -84,9 +116,13 @@ def uniformized_random_walk(
     matrix = _as_square_laplacian(laplacian)
     degrees = np.asarray(matrix.diagonal(), dtype=np.float64)
     max_degree = float(degrees.max(initial=0.0))
-    resolved_rate = max_degree if nu_u is None and max_degree > 0.0 else (1.0 if nu_u is None else float(nu_u))
-    if resolved_rate <= 0.0:
-        raise ValueError("nu_u must be positive")
+    resolved_rate = (
+        max_degree
+        if nu_u is None and max_degree > 0.0
+        else (1.0 if nu_u is None else float(nu_u))
+    )
+    if resolved_rate <= 0.0 or not math.isfinite(resolved_rate):
+        raise ValueError("nu_u must be finite and positive")
     if resolved_rate + tolerance < max_degree:
         raise ValueError(f"nu_u={resolved_rate} is below d_max={max_degree}")
     walk = sparse.eye(matrix.shape[0], format="csr") - matrix / resolved_rate
@@ -103,8 +139,8 @@ def poisson_head_weights(theta: float, radius: int) -> FloatArray:
 
     if theta < 0.0 or not math.isfinite(theta):
         raise ValueError("theta must be finite and nonnegative")
-    if radius < 0:
-        raise ValueError("radius must be nonnegative")
+    if not isinstance(radius, (int, np.integer)) or radius < 0:
+        raise ValueError("radius must be a nonnegative integer")
     if theta == 0.0:
         weights = np.zeros(radius + 1, dtype=np.float64)
         weights[0] = 1.0
@@ -115,9 +151,60 @@ def poisson_head_weights(theta: float, radius: int) -> FloatArray:
 
 
 def poisson_tail(theta: float, radius: int) -> float:
-    if theta < 0.0 or radius < 0:
-        raise ValueError("theta and radius must be nonnegative")
+    if (
+        theta < 0.0
+        or not math.isfinite(theta)
+        or not isinstance(radius, (int, np.integer))
+        or radius < 0
+    ):
+        raise ValueError(
+            "theta must be finite and nonnegative; radius must be a nonnegative integer"
+        )
     return float(poisson.sf(radius, theta))
+
+
+def heat_approximation_certificate(
+    exact: ArrayLike,
+    truncated: ArrayLike,
+    beta_r: float,
+    *,
+    tolerance: float = 1e-12,
+) -> HeatApproximationCertificate:
+    """Check ``||H_t(:,j)-H_t,r(:,j)||_1 <= 2 beta_r`` by column.
+
+    Vector inputs are interpreted as one column. Matrix inputs follow the
+    repository convention: candidate actions index rows and anchors index
+    columns.
+    """
+
+    exact_array = np.asarray(exact, dtype=np.float64)
+    truncated_array = np.asarray(truncated, dtype=np.float64)
+    if exact_array.shape != truncated_array.shape or exact_array.ndim not in {1, 2}:
+        raise ValueError(
+            "exact and truncated kernels must have matching vector or matrix shapes"
+        )
+    if not np.all(np.isfinite(exact_array)) or not np.all(
+        np.isfinite(truncated_array)
+    ):
+        raise ValueError("kernel entries must be finite")
+    if not 0.0 <= beta_r <= 1.0 or not math.isfinite(beta_r):
+        raise ValueError("beta_r must lie in [0, 1]")
+    if tolerance < 0.0 or not math.isfinite(tolerance):
+        raise ValueError("tolerance must be finite and nonnegative")
+    if exact_array.ndim == 1:
+        errors = np.array([np.abs(exact_array - truncated_array).sum()])
+    else:
+        errors = np.abs(exact_array - truncated_array).sum(axis=0)
+    bound = 2.0 * beta_r
+    maximum = float(errors.max(initial=0.0))
+    return HeatApproximationCertificate(
+        column_l1_errors=errors,
+        max_column_l1_error=maximum,
+        beta_r=float(beta_r),
+        l1_bound=bound,
+        tolerance=float(tolerance),
+        holds=maximum <= bound + tolerance,
+    )
 
 
 def truncated_heat_kernel(
@@ -129,8 +216,8 @@ def truncated_heat_kernel(
 ) -> FloatArray:
     """Dense reference for the normalized Poisson head in Equation (32)."""
 
-    if diffusion_time < 0.0:
-        raise ValueError("diffusion_time must be nonnegative")
+    if diffusion_time < 0.0 or not math.isfinite(diffusion_time):
+        raise ValueError("diffusion_time must be finite and nonnegative")
     matrix = _as_square_laplacian(laplacian)
     walk, resolved_rate = uniformized_random_walk(matrix, nu_u)
     coefficients = poisson_head_weights(resolved_rate * diffusion_time, radius)
@@ -164,4 +251,3 @@ def truncated_heat_column(
         power = np.asarray(walk @ power).ravel()
         result += coefficients[order] * power
     return _clean_probability_columns(result[:, None])[:, 0]
-

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -26,15 +27,32 @@ def local_truncated_heat_column(
 ) -> FloatArray:
     """Build one column from adjacency access, never a dense heat matrix."""
 
-    if diffusion_time < 0.0 or radius < 0:
-        raise ValueError("diffusion_time and radius must be nonnegative")
+    if (
+        diffusion_time < 0.0
+        or not math.isfinite(diffusion_time)
+        or not isinstance(radius, (int, np.integer))
+        or radius < 0
+    ):
+        raise ValueError(
+            "diffusion_time must be finite and nonnegative; radius must be a nonnegative integer"
+        )
     if not 0 <= anchor < graph.K:
         raise IndexError(anchor)
     degrees = graph.weighted_degree
     max_degree = float(degrees.max(initial=0.0))
-    resolved_rate = max_degree if nu_u is None and max_degree > 0.0 else (1.0 if nu_u is None else float(nu_u))
-    if resolved_rate <= 0.0 or resolved_rate + 1e-12 < max_degree:
-        raise ValueError("nu_u must be positive and at least the maximum weighted degree")
+    resolved_rate = (
+        max_degree
+        if nu_u is None and max_degree > 0.0
+        else (1.0 if nu_u is None else float(nu_u))
+    )
+    if (
+        resolved_rate <= 0.0
+        or not math.isfinite(resolved_rate)
+        or resolved_rate + 1e-12 < max_degree
+    ):
+        raise ValueError(
+            "nu_u must be finite, positive, and at least the maximum weighted degree"
+        )
     coefficients = poisson_head_weights(resolved_rate * diffusion_time, radius)
     current: dict[int, float] = {anchor: 1.0}
     accumulated: dict[int, float] = {anchor: float(coefficients[0])}
@@ -107,4 +125,3 @@ class LazyTruncatedHeat:
         self._cache.clear()
         self.cache_hits = 0
         self.cache_misses = 0
-

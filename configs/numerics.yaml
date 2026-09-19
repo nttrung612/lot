@@ -4,9 +4,23 @@ graph:
   family: cycle
   K: 12
   edge_weight: 1.0
+validation_graphs:
+  - family: path
+    K: 12
+  - family: cycle
+    K: 12
+  - family: grid
+    rows: 3
+    columns: 4
+  - family: torus
+    rows: 3
+    columns: 4
+  - family: random_regular_expander
+    K: 12
+    degree: 4
+    seed: 0
 heat:
   diffusion_time: 0.75
   radius: 8
 backup:
   temperature: 0.2
-

@@ -18,7 +18,7 @@ def test_truncated_support_is_inside_the_graph_ball():
     anchor = 1
     column = local_truncated_heat_column(graph, 0.9, radius, anchor)
     support = set(np.flatnonzero(column > 1e-15))
-    assert support <= graph.ball(anchor, radius)
+    assert support == graph.ball(anchor, radius)
     assert np.all(column >= 0.0)
     np.testing.assert_allclose(column.sum(), 1.0, atol=1e-14, rtol=0.0)
 
@@ -47,6 +47,16 @@ def test_local_and_dense_finite_walk_implementations_agree_when_ball_covers_grap
         np.testing.assert_allclose(local, dense[:, anchor], atol=2e-14, rtol=0.0)
 
 
+def test_local_and_dense_agree_with_lazy_uniformization_self_loops():
+    graph = path_graph(7, edge_weight=1.5)
+    radius = 5
+    nu_u = 4.0
+    dense = truncated_heat_kernel(graph.laplacian, 0.8, radius, nu_u=nu_u)
+    for anchor in range(graph.K):
+        local = local_truncated_heat_column(graph, 0.8, radius, anchor, nu_u=nu_u)
+        np.testing.assert_allclose(local, dense[:, anchor], atol=3e-14, rtol=0.0)
+
+
 def test_local_finite_walk_converges_to_exact_heat_for_large_radius():
     graph = path_graph(6)
     diffusion_time = 0.4
@@ -72,4 +82,3 @@ def test_lazy_columns_are_cached_and_charge_only_cold_graph_accesses():
     assert lazy.cache_misses == 1
     assert lazy.cache_hits == 1
     assert lazy.cached_columns == 1
-
