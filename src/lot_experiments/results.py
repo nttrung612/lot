@@ -78,12 +78,12 @@ def result_row(**values: Any) -> dict[str, Any]:
 def validate_results(rows: pd.DataFrame | Sequence[Mapping[str, Any]]) -> pd.DataFrame:
     frame = rows.copy() if isinstance(rows, pd.DataFrame) else pd.DataFrame(rows)
     missing = set(RESULT_COLUMNS) - set(frame.columns)
-    extra = set(frame.columns) - set(RESULT_COLUMNS)
-    if missing or extra:
-        raise ResultSchemaError(f"schema mismatch; missing={sorted(missing)}, extra={sorted(extra)}")
+    if missing:
+        raise ResultSchemaError(f"schema mismatch; missing={sorted(missing)}")
     if frame["target"].isna().any() or (frame["target"] == "").any():
         raise ResultSchemaError("every result row must have a target")
-    return frame.loc[:, RESULT_COLUMNS]
+    experiment_columns = [column for column in frame.columns if column not in RESULT_COLUMNS]
+    return frame.loc[:, [*RESULT_COLUMNS, *experiment_columns]]
 
 
 def require_common_target(

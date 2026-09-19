@@ -105,6 +105,45 @@ def exact_heat_column(
     return _clean_probability_columns(column[:, None], tolerance)[:, 0]
 
 
+def exact_heat_columns(
+    laplacian: ArrayLike | sparse.spmatrix,
+    diffusion_time: float,
+    anchors: ArrayLike | None = None,
+    *,
+    batch_size: int = 128,
+    tolerance: float = 1e-12,
+) -> FloatArray:
+    """Compute selected exact columns with batched sparse ``expm_multiply``.
+
+    This is the scalable dense-reference backend used by kernel studies. It
+    avoids dense ``scipy.linalg.expm`` and bounds temporary memory, but its
+    returned array is still dense and must never be used by a method advertised
+    as local.
+    """
+
+    if diffusion_time < 0 or not math.isfinite(diffusion_time):
+        raise ValueError("diffusion_time must be finite and nonnegative")
+    if not isinstance(batch_size, (int, np.integer)) or batch_size < 1:
+        raise ValueError("batch_size must be a positive integer")
+    matrix = _as_square_laplacian(laplacian)
+    if anchors is None:
+        anchor_array = np.arange(matrix.shape[0], dtype=np.int64)
+    else:
+        anchor_array = np.asarray(anchors, dtype=np.int64)
+        if anchor_array.ndim != 1:
+            raise ValueError("anchors must be a one-dimensional sequence")
+    if np.any(anchor_array < 0) or np.any(anchor_array >= matrix.shape[0]):
+        raise IndexError("anchor index outside the action graph")
+    result = np.empty((matrix.shape[0], len(anchor_array)), dtype=np.float64)
+    for start in range(0, len(anchor_array), int(batch_size)):
+        stop = min(start + int(batch_size), len(anchor_array))
+        batch_anchors = anchor_array[start:stop]
+        basis = np.zeros((matrix.shape[0], len(batch_anchors)), dtype=np.float64)
+        basis[batch_anchors, np.arange(len(batch_anchors))] = 1.0
+        result[:, start:stop] = expm_multiply(-diffusion_time * matrix, basis)
+    return _clean_probability_columns(result, tolerance)
+
+
 def uniformized_random_walk(
     laplacian: ArrayLike | sparse.spmatrix,
     nu_u: float | None = None,

@@ -45,3 +45,9 @@ def test_missing_target_is_rejected_even_if_dataframe_has_column():
     with pytest.raises(ResultSchemaError, match="must have a target"):
         validate_results(pd.DataFrame([row]))
 
+
+def test_experiment_specific_columns_are_preserved():
+    row = make_row("exact_heat", "exact_heat")
+    row["kernel_effective_count"] = 7
+    frame = validate_results(pd.DataFrame([row]))
+    assert frame.loc[0, "kernel_effective_count"] == 7

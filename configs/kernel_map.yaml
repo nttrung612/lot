@@ -4,4 +4,17 @@ graph_families: [path, grid, torus, random_regular_expander]
 K: [64, 128, 256, 512, 1024, 2048, 4096]
 alpha: [0.1, 0.01, 0.001, 0.0001]
 poisson_mean: [0.5, 2.0, 8.0]
-
+gibbs_lambda: 1.0
+expander_degree: 4
+timing_repeats: 3
+benchmark_threads: 1
+dense_batch_size: 128
+raw_output: outputs/raw/kernel_map.parquet
+summary_output: outputs/summaries/kernel_map.csv
+figure_png: outputs/figures/figure1_kernel_map.png
+figure_pdf: outputs/figures/figure1_kernel_map.pdf
+figure:
+  alpha: 0.01
+  poisson_mean: 2.0
+  primary_graph_family: path
+  comparison_requested_K: 1024
