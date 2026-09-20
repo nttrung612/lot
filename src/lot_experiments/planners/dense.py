@@ -19,6 +19,7 @@ from lot_experiments.counters import OperationCounters
 from lot_experiments.environments.ring_control import RingControlMDP
 from lot_experiments.graphs import ActionGraph, cycle_graph
 from lot_experiments.kernels import (
+    cycle_exact_heat_kernel,
     diffusion_distance_gibbs_kernel,
     exact_heat_kernel,
     truncated_heat_kernel,
@@ -99,6 +100,7 @@ def batched_lot_backup(
     *,
     offsets: ArrayLike | None = None,
     retained: ArrayLike | None = None,
+    circulant: bool | None = None,
 ) -> tuple[FloatArray, FloatArray]:
     """Evaluate the same LOT backup for a batch of states.
 
@@ -130,14 +132,47 @@ def batched_lot_backup(
     retained_kernel = np.where(mask, kernel, 0.0)
     row_maxima = np.max(q_values, axis=1)
     exponentials = np.exp((q_values - row_maxima[:, None]) / T0)
-    partitions = exponentials @ retained_kernel
+    is_square = retained_kernel.shape == (action_count, action_count)
+    if circulant is None:
+        is_circulant = is_square and all(
+            np.allclose(
+                retained_kernel[:, anchor],
+                np.roll(retained_kernel[:, 0], anchor),
+                atol=1e-13,
+                rtol=1e-13,
+            )
+            for anchor in range(action_count)
+        )
+    else:
+        is_circulant = bool(circulant)
+        if is_circulant and not is_square:
+            raise ValueError("a circulant kernel must be square")
+    if is_circulant:
+        first_column = retained_kernel[:, 0]
+        reverse_column = np.concatenate((first_column[:1], first_column[:0:-1]))
+        partitions = np.fft.ifft(
+            np.fft.fft(exponentials, axis=1)
+            * np.fft.fft(reverse_column)[None, :],
+            axis=1,
+        ).real
+    else:
+        partitions = exponentials @ retained_kernel
     if np.any(partitions <= 0.0) or not np.all(np.isfinite(partitions)):
         raise FloatingPointError("LOT partition is zero or nonfinite")
     log_partitions = np.log(partitions) + row_maxima[:, None] / T0
     values = mu @ offset_vector + T0 * np.sum(mu * log_partitions, axis=1)
 
     # pi_si = exp((q_si-m_s)/T0) sum_j w_ij mu_sj / Z_sj.
-    policy = exponentials * ((mu / partitions) @ retained_kernel.T)
+    if is_circulant:
+        mixture = np.fft.ifft(
+            np.fft.fft(mu / partitions, axis=1)
+            * np.fft.fft(first_column)[None, :],
+            axis=1,
+        ).real
+    else:
+        mixture = (mu / partitions) @ retained_kernel.T
+    np.maximum(mixture, 0.0, out=mixture)
+    policy = exponentials * mixture
     policy /= policy.sum(axis=1, keepdims=True)
     return values, policy
 
@@ -169,6 +204,7 @@ def dense_value_iteration(
     max_iterations: int = 10_000,
     initial_values: ArrayLike | None = None,
     counter: OperationCounters | None = None,
+    circulant_kernel: bool = False,
 ) -> PlanningResult:
     """Solve a dense tabular Bellman fixed point by value iteration."""
 
@@ -212,6 +248,7 @@ def dense_value_iteration(
                 float(T0),
                 offsets=offsets,
                 retained=retained,
+                circulant=circulant_kernel,
             )
         residual = float(np.max(np.abs(updated - values)))
         values = updated
@@ -235,6 +272,7 @@ def dense_value_iteration(
             float(T0),
             offsets=offsets,
             retained=retained,
+            circulant=circulant_kernel,
         )
     residual = float(np.max(np.abs(bellman_values - values)))
     counters.online_seconds += perf_counter() - start
@@ -270,7 +308,15 @@ def full_exact_heat_reference(
         raise ValueError("action graph and MDP must have the same action count")
     counters = OperationCounters() if counter is None else counter
     start = perf_counter()
-    heat = exact_heat_kernel(action_graph.laplacian, diffusion_time)
+    heat = (
+        cycle_exact_heat_kernel(
+            action_graph.K,
+            diffusion_time,
+            edge_weight=float(action_graph.adjacency.data[0]),
+        )
+        if action_graph.family == "cycle"
+        else exact_heat_kernel(action_graph.laplacian, diffusion_time)
+    )
     counters.geometry_preprocess_seconds += perf_counter() - start
     counters.dense_linear_algebra_operations += 1
     counters.observe_memory()
@@ -284,6 +330,7 @@ def full_exact_heat_reference(
         tolerance=tolerance,
         max_iterations=max_iterations,
         counter=counters,
+        circulant_kernel=action_graph.family == "cycle",
     )
 
 
@@ -344,9 +391,23 @@ def exact_heat_topmass_reference(
         raise ValueError("action graph and MDP must have the same action count")
     counters = OperationCounters()
     start = perf_counter()
-    heat = exact_heat_kernel(action_graph.laplacian, diffusion_time)
-    retained = np.column_stack(
-        [top_mass_mask(heat[:, anchor], alpha) for anchor in range(mdp.K)]
+    heat = (
+        cycle_exact_heat_kernel(
+            action_graph.K,
+            diffusion_time,
+            edge_weight=float(action_graph.adjacency.data[0]),
+        )
+        if action_graph.family == "cycle"
+        else exact_heat_kernel(action_graph.laplacian, diffusion_time)
+    )
+    retained = (
+        np.column_stack(
+            [np.roll(top_mass_mask(heat[:, 0], alpha), anchor) for anchor in range(mdp.K)]
+        )
+        if action_graph.family == "cycle"
+        else np.column_stack(
+            [top_mass_mask(heat[:, anchor], alpha) for anchor in range(mdp.K)]
+        )
     )
     counters.geometry_preprocess_seconds += perf_counter() - start
     counters.dense_linear_algebra_operations += 1
@@ -362,6 +423,7 @@ def exact_heat_topmass_reference(
         tolerance=tolerance,
         max_iterations=max_iterations,
         counter=counters,
+        circulant_kernel=action_graph.family == "cycle",
     )
 
 
@@ -397,6 +459,7 @@ def truncated_heat_reference(
         tolerance=tolerance,
         max_iterations=max_iterations,
         counter=counters,
+        circulant_kernel=action_graph.family == "cycle",
     )
 
 
@@ -475,6 +538,7 @@ def diffusion_gibbs_reference(
         tolerance=tolerance,
         max_iterations=max_iterations,
         counter=counters,
+        circulant_kernel=action_graph.family == "cycle",
     )
 
 

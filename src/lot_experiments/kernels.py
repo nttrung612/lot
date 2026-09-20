@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy import sparse
-from scipy.linalg import expm
+from scipy.linalg import circulant, expm
 from scipy.sparse.linalg import expm_multiply
 from scipy.special import gammaln, logsumexp
 from scipy.stats import poisson
@@ -83,6 +83,113 @@ def exact_heat_kernel(
     matrix = _as_square_laplacian(laplacian)
     heat = expm(-diffusion_time * matrix.toarray())
     return _clean_probability_columns(heat, tolerance)
+
+
+def cycle_exact_heat_kernel(
+    K: int,
+    diffusion_time: float,
+    *,
+    edge_weight: float = 1.0,
+    tolerance: float = 1e-12,
+) -> FloatArray:
+    """Dense heat reference for a weighted cycle with stable positive tails."""
+
+    log_heat = cycle_exact_heat_log_kernel(
+        K,
+        diffusion_time,
+        edge_weight=edge_weight,
+    )
+    return _clean_probability_columns(np.exp(log_heat), tolerance)
+
+
+def _log_modified_bessel_i_integer(order: int, argument: float) -> float:
+    """Evaluate log(I_order(argument)) without tail underflow.
+
+    Ring-planning importance samplers need heat probabilities far below the
+    linear float64 range. The positive power series is inexpensive for the
+    experiment's small Poisson means and remains accurate for large orders.
+    """
+
+    if order < 0 or argument < 0.0 or not math.isfinite(argument):
+        raise ValueError("Bessel order/argument must be nonnegative and finite")
+    if argument == 0.0:
+        return 0.0 if order == 0 else -math.inf
+    log_half = math.log(argument / 2.0)
+    log_term = order * log_half - float(gammaln(order + 1.0))
+    terms = [log_term]
+    maximum = log_term
+    for index in range(1, 10_001):
+        log_term += (
+            2.0 * log_half
+            - math.log(index)
+            - math.log(order + index)
+        )
+        terms.append(log_term)
+        maximum = max(maximum, log_term)
+        if index > argument and log_term < maximum - 50.0:
+            break
+    else:
+        raise RuntimeError("modified-Bessel series did not converge")
+    return float(logsumexp(terms))
+
+
+def cycle_exact_heat_log_kernel(
+    K: int,
+    diffusion_time: float,
+    *,
+    edge_weight: float = 1.0,
+) -> FloatArray:
+    """Return stable log heat probabilities for a weighted cycle.
+
+    For theta = 2 * edge_weight * diffusion_time, the cycle heat mass at
+    residue d is the periodic image sum
+
+    sum_m exp(-theta) I_|d + m K|(theta).
+
+    Computing that sum in log space preserves the mathematically positive
+    tails used by uniform-action importance sampling and random subsets.
+    """
+
+    if not isinstance(K, (int, np.integer)) or K < 3:
+        raise ValueError("cycle heat requires integer K >= 3")
+    if diffusion_time < 0.0 or not math.isfinite(diffusion_time):
+        raise ValueError("diffusion_time must be finite and nonnegative")
+    if edge_weight <= 0.0 or not math.isfinite(edge_weight):
+        raise ValueError("edge_weight must be finite and positive")
+    theta = 2.0 * edge_weight * diffusion_time
+    if theta == 0.0:
+        first_column = np.full(K, -math.inf, dtype=np.float64)
+        first_column[0] = 0.0
+        return circulant(first_column)
+
+    first_column = np.empty(K, dtype=np.float64)
+    for residue in range(K):
+        image_terms: list[float] = []
+        maximum = -math.inf
+        for shell in range(10_001):
+            multipliers = (0,) if shell == 0 else (-shell, shell)
+            shell_terms = []
+            shell_orders = []
+            for multiplier in multipliers:
+                order = abs(residue + multiplier * K)
+                shell_orders.append(order)
+                term = -theta + _log_modified_bessel_i_integer(order, theta)
+                shell_terms.append(term)
+                image_terms.append(term)
+                maximum = max(maximum, term)
+            if (
+                shell >= 1
+                and min(shell_orders) > theta
+                and max(shell_terms) < maximum - 50.0
+            ):
+                break
+        else:
+            raise RuntimeError("cycle heat image sum did not converge")
+        first_column[residue] = float(logsumexp(image_terms))
+
+    # Remove the tiny truncation error from the adaptive image sums.
+    first_column -= float(logsumexp(first_column))
+    return circulant(first_column)
 
 
 def exact_heat_column(

@@ -3,10 +3,61 @@ seed: 0
 K: [64, 128, 256, 512, 1024]
 gamma: 0.95
 action_cost: 0.05
+goal_fraction: 0.0
+root_state_fraction: 0.5
 temperature: [0.05, 0.1, 0.2]
 poisson_mean: [0.5, 2.0, 8.0]
 epsilon: [0.2, 0.1, 0.05]
 delta: 0.05
 anchor_uniform_mass: 0.05
 paired_seeds: 30
+benchmark_threads: 1
 
+methods:
+  - dense_second_order
+  - exact_heat_topmass
+  - truncated_heat_local
+  - poisson_endpoint_mc
+  - uniform_action_mc
+  - random_subset
+
+reference:
+  tolerance: 1.0e-9
+  max_iterations: 5000
+
+sampling:
+  anchor_samples: 8
+  sample_scale: 0.05
+  minimum_inner_samples: 8
+  maximum_inner_samples: 128
+
+localization:
+  heat_tail_scale: 0.25
+  minimum_tail_budget: 1.0e-12
+  maximum_radius: 96
+  pruning_span_bound: 2.0
+
+different_target_references:
+  enabled: true
+  diffusion_gibbs_lambda: 1.0
+
+geometry_controls:
+  enabled: true
+  K: 256
+  temperature: 0.1
+  poisson_mean: 2.0
+  epsilon: 0.1
+  graph_families: [cycle, random_regular_expander, permuted_cycle]
+  expander_degree: 4
+  paired_seeds: 30
+
+bootstrap_repetitions: 2000
+raw_output: outputs/raw/ring_planning.parquet
+summary_output: outputs/summaries/ring_planning.csv
+figure_png: outputs/figures/figure3_ring_planning.png
+figure_pdf: outputs/figures/figure3_ring_planning.pdf
+
+figure:
+  temperature: 0.1
+  poisson_mean: 2.0
+  epsilon: 0.1

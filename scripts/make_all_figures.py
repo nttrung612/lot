@@ -18,14 +18,21 @@ import pandas as pd
 from lot_experiments.config import load_config
 from lot_experiments.kernel_map import resolve_kernel_map_config
 from lot_experiments.plotting.kernel_map import plot_kernel_map_figure
+from lot_experiments.plotting.planning import plot_ring_planning_figure
 from lot_experiments.plotting.pruning import plot_pruning_figure
 from lot_experiments.pruning_experiment import resolve_pruning_config
+from lot_experiments.ring_planning import resolve_ring_planning_config
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kernel-map-config", type=Path, default=Path("configs/kernel_map.yaml"))
     parser.add_argument("--pruning-config", type=Path, default=Path("configs/pruning.yaml"))
+    parser.add_argument(
+        "--ring-planning-config",
+        type=Path,
+        default=Path("configs/ring_planning.yaml"),
+    )
     arguments = parser.parse_args()
     resolved = resolve_kernel_map_config(load_config(arguments.kernel_map_config))
     summary = pd.read_csv(resolved["summary_output"])
@@ -42,6 +49,14 @@ def main() -> None:
         pruning,
         png_path=pruning["figure_png"],
         pdf_path=pruning["figure_pdf"],
+    )
+    ring = resolve_ring_planning_config(load_config(arguments.ring_planning_config))
+    ring_summary = pd.read_csv(ring["summary_output"])
+    plot_ring_planning_figure(
+        ring_summary,
+        ring,
+        png_path=ring["figure_png"],
+        pdf_path=ring["figure_pdf"],
     )
 
 

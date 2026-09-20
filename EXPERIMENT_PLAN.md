@@ -598,7 +598,7 @@ Appendix:
 - [ ] M2: Kernel design-map experiment complete with Figure 1 draft.
 - [ ] M3: Sharp pruning and Poisson-truncation experiment complete.
 - [x] M4: Ring environment, dense references, and baseline planners implemented.
-- [ ] M5: End-to-end synthetic planning results complete.
+- [x] M5: End-to-end synthetic planning results complete.
 - [ ] M6: Reward-free learned-geometry experiment complete.
 - [ ] M7: Pendulum wrapper and converged reference solution complete.
 - [ ] M8: Pendulum baselines and final figures complete.

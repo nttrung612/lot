@@ -3,15 +3,15 @@
 Numerical experiments for **What Action Geometry Buys: A Design Space for
 Optimal-Transport Bellman Backups**.
 
-The repository currently implements milestones M0-M4: configuration loading,
+The repository currently implements milestones M0-M5: configuration loading,
 result validation, graph construction, exact and normalized finite-walk heat
 kernels, reusable Poisson-tail certificates, stable LOT backups, lazy local
 heat columns, operation accounting, and deterministic validation on all planned
 small graph families, the kernel design-map experiment with a Figure 1 draft,
 the sharp-pruning/Poisson-truncation experiment with a Figure 2 draft, and the
 stochastic ring-control environment with dense target references and baseline
-planners. The end-to-end ring sweep and later learning studies are not yet
-implemented.
+planners, and the end-to-end paired-seed ring study with Figure 3. Later
+geometry-learning and control studies are not yet implemented.
 
 ## Setup and checks
 
@@ -23,6 +23,7 @@ uv run pytest -q
 uv run python scripts/check_numerics.py --config configs/numerics.yaml
 uv run python scripts/run_kernel_map.py --config configs/kernel_map.yaml
 uv run python scripts/run_pruning.py --config configs/pruning.yaml
+uv run python scripts/run_ring_planning.py --config configs/ring_planning.yaml
 uv run python scripts/make_all_figures.py
 ```
 
@@ -49,3 +50,9 @@ results. Experiment raw, summary, and figure artifacts belong in `outputs/raw/`,
   diffusion-Gibbs, and permuted-graph solutions retain distinct target labels.
   Local finite-walk caches store sparse column supports rather than a hidden
   dense heat matrix.
+- M5 freezes paired anchor/candidate samples within each empirical Bellman
+  operator, runs it to a checked fixed point, and reports median/IQR plus
+  bootstrap 95% confidence intervals. Coverage is explicitly empirical; the
+  plug-in Monte Carlo baselines are not presented as certified estimators.
+  Figure 3 keeps MaxEnt, hard max, diffusion-Gibbs, expander, and permuted-graph
+  targets separate from the primary cycle exact-heat comparison.

@@ -9,6 +9,8 @@ from lot_experiments.graphs import (
     torus_graph,
 )
 from lot_experiments.kernels import (
+    cycle_exact_heat_kernel,
+    cycle_exact_heat_log_kernel,
     exact_heat_column,
     exact_heat_kernel,
     heat_approximation_certificate,
@@ -16,6 +18,23 @@ from lot_experiments.kernels import (
     truncated_heat_kernel,
     uniformized_random_walk,
 )
+
+
+def test_fast_cycle_heat_matches_generic_dense_reference():
+    graph = cycle_graph(9)
+    generic = exact_heat_kernel(graph.laplacian, 0.73)
+    fast = cycle_exact_heat_kernel(graph.K, 0.73)
+    np.testing.assert_allclose(fast, generic, atol=4e-15, rtol=0.0)
+
+
+def test_cycle_log_heat_preserves_tiny_positive_tail_mass():
+    log_heat = cycle_exact_heat_log_kernel(64, 0.25)
+    heat = cycle_exact_heat_kernel(64, 0.25)
+
+    assert np.all(np.isfinite(log_heat))
+    assert np.all(heat > 0.0)
+    np.testing.assert_allclose(np.exp(log_heat), heat, atol=0.0, rtol=2e-15)
+    np.testing.assert_allclose(heat.sum(axis=0), 1.0, atol=2e-15, rtol=0.0)
 
 
 @pytest.mark.parametrize(
