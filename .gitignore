@@ -10,4 +10,4 @@ outputs/figures/*
 !outputs/raw/.gitkeep
 !outputs/summaries/.gitkeep
 !outputs/figures/.gitkeep
-
+LOT.pdf
