@@ -1,6 +1,9 @@
+import copy
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
+import pytest
 
 from lot_experiments.planners.empirical import (
     component_from_log_samples,
@@ -125,3 +128,101 @@ def test_small_m5_run_resumes_aggregates_and_plots(tmp_path):
     )
     assert Path(png).stat().st_size > 0
     assert Path(pdf).stat().st_size > 0
+
+
+def test_parallel_cases_match_serial_results_and_resume(tmp_path):
+    common = {
+        "experiment": "ring_planning",
+        "seed": 9,
+        "K": [5],
+        "gamma": 0.65,
+        "action_cost": 0.05,
+        "temperature": [0.2],
+        "poisson_mean": [1.0],
+        "epsilon": [0.3, 0.2],
+        "delta": 0.1,
+        "anchor_uniform_mass": 0.05,
+        "paired_seeds": 1,
+        "benchmark_threads": 1,
+        "reference": {"tolerance": 1e-8, "max_iterations": 1000},
+        "sampling": {
+            "anchor_samples": 2,
+            "sample_scale": 0.01,
+            "minimum_inner_samples": 2,
+            "maximum_inner_samples": 3,
+        },
+        "localization": {
+            "heat_tail_scale": 0.25,
+            "minimum_tail_budget": 1e-8,
+            "maximum_radius": 2,
+            "pruning_span_bound": 1.0,
+        },
+        "different_target_references": {"enabled": False},
+        "geometry_controls": {"enabled": False},
+        "bootstrap_repetitions": 20,
+        "figure": {"temperature": 0.2, "poisson_mean": 1.0, "epsilon": 0.3},
+    }
+    serial_config = copy.deepcopy(common)
+    serial_config.update(
+        {
+            "execution": {"workers": 1},
+            "raw_output": str(tmp_path / "serial.parquet"),
+        }
+    )
+    parallel_config = copy.deepcopy(common)
+    parallel_config.update(
+        {
+            "execution": {"workers": 2},
+            "raw_output": str(tmp_path / "parallel.parquet"),
+        }
+    )
+
+    serial = run_ring_planning(serial_config)
+    parallel = run_ring_planning(parallel_config)
+    resumed = run_ring_planning(parallel_config)
+
+    assert len(serial) == len(parallel) == len(resumed) == 16
+    assert parallel["run_id"].is_unique
+    assert set(parallel["status"]) == {"complete"}
+    assert set(serial["timing_mode"]) == {"isolated"}
+    assert set(parallel["timing_mode"]) == {"concurrent"}
+    assert set(parallel["execution_workers"]) == {2}
+
+    sort_by = ["epsilon", "method", "replicate"]
+    excluded = {
+        "run_id",
+        "config_json",
+        "metadata_json",
+        "geometry_preprocess_seconds",
+        "online_seconds",
+        "peak_memory_mb",
+        "execution_workers",
+        "timing_mode",
+    }
+    comparable = [column for column in serial.columns if column not in excluded]
+    serial_values = serial.sort_values(sort_by)[comparable].reset_index(drop=True)
+    parallel_values = parallel.sort_values(sort_by)[comparable].reset_index(drop=True)
+    pd.testing.assert_frame_equal(
+        serial_values,
+        parallel_values,
+        check_dtype=False,
+        check_exact=False,
+        rtol=1e-13,
+        atol=1e-13,
+    )
+
+    conflicting = copy.deepcopy(parallel_config)
+    conflicting["execution"]["workers"] = 1
+    with pytest.raises(ValueError, match="different resolved configuration"):
+        run_ring_planning(conflicting)
+
+
+@pytest.mark.parametrize("workers", [0, -1, 1.5, True])
+def test_ring_config_rejects_invalid_worker_count(workers):
+    with pytest.raises(ValueError, match="execution.workers"):
+        resolve_ring_planning_config(
+            {
+                "experiment": "ring_planning",
+                "execution": {"workers": workers},
+            }
+        )

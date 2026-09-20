@@ -27,6 +27,25 @@ uv run python scripts/run_ring_planning.py --config configs/ring_planning.yaml
 uv run python scripts/make_all_figures.py
 ```
 
+For a multi-core server, distribute independent ring-planning cases across
+processes while keeping every worker on single-threaded BLAS:
+
+```bash
+uv run python scripts/run_ring_planning.py \
+  --config configs/ring_planning.yaml \
+  --set execution.workers=16 \
+  --set raw_output=outputs/raw/ring_planning_parallel.parquet \
+  --set summary_output=outputs/summaries/ring_planning_parallel.csv \
+  --set figure_png=outputs/figures/figure3_ring_planning_parallel.png \
+  --set figure_pdf=outputs/figures/figure3_ring_planning_parallel.pdf
+```
+
+Only the parent process writes checkpoints, and resumption still uses stable
+run identifiers. Parallel rows are labeled with `timing_mode=concurrent`;
+their accuracy and operation counts are valid, but the runtime panel is
+intentionally withheld. Use `execution.workers=1` for paper-ready wall-clock
+measurements.
+
 The diagnostic is deliberately small (`K <= 16`) and does not write experiment
 results. Experiment raw, summary, and figure artifacts belong in `outputs/raw/`,
 `outputs/summaries/`, and `outputs/figures/`, respectively.

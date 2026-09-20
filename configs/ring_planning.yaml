@@ -12,6 +12,8 @@ delta: 0.05
 anchor_uniform_mass: 0.05
 paired_seeds: 30
 benchmark_threads: 1
+execution:
+  workers: 1
 
 methods:
   - dense_second_order

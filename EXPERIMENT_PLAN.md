@@ -557,6 +557,10 @@ Plot the input graph, induced co-occurrence graph, resistance matrix, and finite
 - Do not tune separately for every $K$ unless the tuning rule is itself part of the method.
 - Record machine, CPU, thread count, BLAS backend, package versions, and git commit.
 - Force single-threaded BLAS for clean runtime comparisons unless parallel scaling is a stated experiment.
+- Independent cases may run in separate single-threaded processes to accelerate
+  accuracy, coverage, and operation-count collection. Label their per-process
+  wall times as concurrent diagnostics and exclude them from paper-ready runtime
+  plots; obtain those plots from an otherwise identical one-worker run.
 
 ## 14. Fair cost accounting
 

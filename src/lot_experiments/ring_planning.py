@@ -7,9 +7,12 @@ import hashlib
 import json
 import logging
 import math
+import multiprocessing
 import os
 import tempfile
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -84,6 +87,8 @@ RING_COLUMNS = (
     "cache_misses",
     "metadata_json",
     "error_message",
+    "execution_workers",
+    "timing_mode",
 )
 
 SUMMARY_METRICS = (
@@ -138,6 +143,7 @@ def resolve_ring_planning_config(config: Mapping[str, Any]) -> dict[str, Any]:
             "anchor_uniform_mass": 0.05,
             "paired_seeds": 30,
             "benchmark_threads": 1,
+            "execution": {"workers": 1},
             "methods": sorted(METHODS),
             "reference": {"tolerance": 1e-9, "max_iterations": 5000},
             "sampling": {
@@ -178,6 +184,13 @@ def resolve_ring_planning_config(config: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("experiment must be 'ring_planning'")
     if int(resolved["benchmark_threads"]) != 1:
         raise ValueError("M5 runtime comparisons require benchmark_threads: 1")
+    workers = resolved["execution"]["workers"]
+    if (
+        isinstance(workers, bool)
+        or not isinstance(workers, (int, np.integer))
+        or int(workers) < 1
+    ):
+        raise ValueError("execution.workers must be a positive integer")
     if not resolved["K"] or any(int(value) < 3 for value in resolved["K"]):
         raise ValueError("K must be a nonempty list of integers >= 3")
     if not 0.0 <= float(resolved["gamma"]) < 1.0:
@@ -426,6 +439,7 @@ def _base_row(
     delta: float,
     radius: int | None,
     root_state: int,
+    execution_workers: int,
     status: str = "complete",
 ) -> dict[str, Any]:
     row = result_row(
@@ -454,6 +468,8 @@ def _base_row(
             "experiment_part": part,
             "metadata_json": metadata_json,
             "error_message": "",
+            "execution_workers": execution_workers,
+            "timing_mode": "isolated" if execution_workers == 1 else "concurrent",
         }
     )
     return row
@@ -638,6 +654,7 @@ def _run_case(
             delta=delta,
             radius=method_radius,
             root_state=root_state,
+            execution_workers=int(resolved["execution"]["workers"]),
         )
         _fill_result(
             row,
@@ -691,6 +708,7 @@ def _run_case(
                 delta=delta,
                 radius=radius if method == "truncated_heat_local" else None,
                 root_state=root_state,
+                execution_workers=int(resolved["execution"]["workers"]),
             )
             row.update(
                 {
@@ -855,6 +873,7 @@ def _run_case(
                 delta=delta,
                 radius=None,
                 root_state=root_state,
+                execution_workers=int(resolved["execution"]["workers"]),
             )
             row.update(
                 {
@@ -870,10 +889,220 @@ def _run_case(
             completed.add(run_id)
 
 
+@dataclass(frozen=True)
+class RingCase:
+    """Pickle-safe description of one independently executable grid case."""
+
+    part: str
+    graph_family: str
+    K: int
+    T0: float
+    theta: float
+    epsilon: float
+    repetitions: int
+    graph_seed: int
+    graph_degree: int = 4
+
+
+@dataclass(frozen=True)
+class RingCaseOutcome:
+    """Rows produced by a case, including partial rows if the case failed."""
+
+    rows: tuple[dict[str, Any], ...]
+    failure_message: str | None = None
+
+
+def _ring_cases(resolved: Mapping[str, Any]) -> list[RingCase]:
+    cases = [
+        RingCase(
+            part="primary",
+            graph_family="cycle",
+            K=int(K),
+            T0=float(T0),
+            theta=float(theta),
+            epsilon=float(epsilon),
+            repetitions=int(resolved["paired_seeds"]),
+            graph_seed=int(resolved["seed"]),
+        )
+        for K in resolved["K"]
+        for T0 in resolved["temperature"]
+        for theta in resolved["poisson_mean"]
+        for epsilon in resolved["epsilon"]
+    ]
+    controls = resolved["geometry_controls"]
+    if bool(controls["enabled"]):
+        cases.extend(
+            RingCase(
+                part="geometry_control",
+                graph_family=family,
+                K=int(controls["K"]),
+                T0=float(controls["temperature"]),
+                theta=float(controls["poisson_mean"]),
+                epsilon=float(controls["epsilon"]),
+                repetitions=int(controls["paired_seeds"]),
+                graph_seed=int(resolved["seed"]),
+                graph_degree=int(controls["expander_degree"]),
+            )
+            for family in map(str, controls["graph_families"])
+        )
+    return cases
+
+
+def _case_graph(case: RingCase) -> ActionGraph:
+    return _action_graph(
+        case.graph_family,
+        case.K,
+        case.graph_seed,
+        degree=case.graph_degree,
+    )
+
+
+def _case_run_ids(
+    case: RingCase, resolved: Mapping[str, Any], resolved_json: str
+) -> set[str]:
+    methods = list(map(str, resolved["methods"]))
+    if case.part == "geometry_control":
+        methods = [method for method in methods if method == "truncated_heat_local"]
+    identities: list[tuple[Any, ...]] = [
+        (
+            case.part,
+            case.graph_family,
+            case.K,
+            case.T0,
+            case.theta,
+            case.epsilon,
+            method,
+            -1,
+        )
+        for method in ("full_exact_heat", "full_truncated_heat")
+    ]
+    identities.extend(
+        (
+            case.part,
+            case.graph_family,
+            case.K,
+            case.T0,
+            case.theta,
+            case.epsilon,
+            method,
+            replicate,
+        )
+        for replicate in range(case.repetitions)
+        for method in methods
+    )
+    if case.part == "primary" and bool(
+        resolved["different_target_references"]["enabled"]
+    ):
+        identities.extend(
+            (
+                case.part,
+                case.graph_family,
+                case.K,
+                case.T0,
+                case.theta,
+                case.epsilon,
+                method,
+                -1,
+            )
+            for method in (
+                "uniform_maxent",
+                "hard_max",
+                "diffusion_distance_gibbs",
+            )
+        )
+    return {_stable_run_id(identity, resolved_json) for identity in identities}
+
+
+def _execute_ring_case(
+    resolved: dict[str, Any],
+    resolved_json: str,
+    metadata_json: str,
+    case: RingCase,
+    completed: frozenset[str],
+) -> RingCaseOutcome:
+    rows: list[dict[str, Any]] = []
+    try:
+        _run_case(
+            resolved=resolved,
+            resolved_json=resolved_json,
+            metadata_json=metadata_json,
+            rows=rows,
+            completed=set(completed),
+            part=case.part,
+            graph=_case_graph(case),
+            K=case.K,
+            T0=case.T0,
+            theta=case.theta,
+            epsilon=case.epsilon,
+            repetitions=case.repetitions,
+        )
+    except Exception as error:
+        failure = _case_failure_row(
+            case, error, resolved, resolved_json, metadata_json
+        )
+        _merge_rows(rows, [failure])
+        return RingCaseOutcome(tuple(rows), str(failure["error_message"]))
+    return RingCaseOutcome(tuple(rows))
+
+
+def _case_failure_row(
+    case: RingCase,
+    error: BaseException,
+    resolved: Mapping[str, Any],
+    resolved_json: str,
+    metadata_json: str,
+) -> dict[str, Any]:
+    graph = _case_graph(case)
+    _, nu_u = uniformized_random_walk(graph.laplacian)
+    failure_id = _stable_run_id(
+        (
+            case.part,
+            graph.family,
+            case.K,
+            case.T0,
+            case.theta,
+            case.epsilon,
+            "experiment_failure",
+        ),
+        resolved_json,
+    )
+    failed = _base_row(
+        run_id=failure_id,
+        seed=int(resolved["seed"]),
+        method="experiment_failure",
+        target=_target_for_graph(graph.family, "exact_heat"),
+        graph=graph,
+        resolved_json=resolved_json,
+        metadata_json=metadata_json,
+        part=case.part,
+        T0=case.T0,
+        theta=case.theta,
+        diffusion_time=case.theta / nu_u,
+        gamma=float(resolved["gamma"]),
+        epsilon=case.epsilon,
+        delta=float(resolved["delta"]),
+        radius=None,
+        root_state=int(round(float(resolved["root_state_fraction"]) * case.K))
+        % case.K,
+        execution_workers=int(resolved["execution"]["workers"]),
+        status="timeout" if isinstance(error, TimeoutError) else "failed",
+    )
+    failed["error_message"] = f"{type(error).__name__}: {error}"
+    return failed
+
+
+def _merge_rows(
+    rows: list[dict[str, Any]], updates: Sequence[Mapping[str, Any]]
+) -> None:
+    indexed = {str(row["run_id"]): dict(row) for row in rows}
+    indexed.update({str(row["run_id"]): dict(row) for row in updates})
+    rows[:] = [indexed[run_id] for run_id in sorted(indexed)]
+
+
 def run_ring_planning(
     config: Mapping[str, Any], *, repository: str | Path = "."
 ) -> pd.DataFrame:
-    """Run or resume the complete M5 raw experiment."""
+    """Run or resume M5, optionally distributing independent cases."""
 
     resolved = resolve_ring_planning_config(config)
     resolved_json = config_json(resolved)
@@ -883,7 +1112,12 @@ def run_ring_planning(
     output = Path(resolved["raw_output"])
     if output.exists():
         existing = validate_results(pd.read_parquet(output))
-        existing = existing.loc[existing["config_json"] == resolved_json].copy()
+        configurations = set(existing["config_json"].astype(str))
+        if configurations and configurations != {resolved_json}:
+            raise ValueError(
+                "raw_output contains a different resolved configuration; "
+                "choose a distinct output path instead of overwriting it"
+            )
         rows = existing.to_dict(orient="records")
     else:
         rows = []
@@ -894,96 +1128,122 @@ def run_ring_planning(
     def commit() -> None:
         write_results_atomic(rows, output)
 
-    def run_case_or_record(**case: Any) -> None:
-        try:
-            _run_case(
-                resolved=resolved,
-                resolved_json=resolved_json,
-                metadata_json=metadata_json,
-                rows=rows,
-                completed=completed,
-                **case,
-            )
-        except Exception as error:
-            graph = case["graph"]
-            _, nu_u = uniformized_random_walk(graph.laplacian)
-            failure_id = _stable_run_id(
-                (
-                    case["part"],
-                    graph.family,
-                    case["K"],
-                    case["T0"],
-                    case["theta"],
-                    case["epsilon"],
-                    "experiment_failure",
-                ),
-                resolved_json,
-            )
-            rows[:] = [row for row in rows if str(row["run_id"]) != failure_id]
-            failed = _base_row(
-                run_id=failure_id,
-                seed=int(resolved["seed"]),
-                method="experiment_failure",
-                target=_target_for_graph(graph.family, "exact_heat"),
-                graph=graph,
-                resolved_json=resolved_json,
-                metadata_json=metadata_json,
-                part=case["part"],
-                T0=case["T0"],
-                theta=case["theta"],
-                diffusion_time=case["theta"] / nu_u,
-                gamma=float(resolved["gamma"]),
-                epsilon=case["epsilon"],
-                delta=float(resolved["delta"]),
-                radius=None,
-                root_state=int(
-                    round(float(resolved["root_state_fraction"]) * case["K"])
+    pending: list[tuple[RingCase, frozenset[str]]] = []
+    for case in _ring_cases(resolved):
+        expected = _case_run_ids(case, resolved, resolved_json)
+        if expected <= completed:
+            continue
+        pending.append((case, frozenset(expected & completed)))
+
+    workers = int(resolved["execution"]["workers"])
+    if workers > 1:
+        # Longest-processing-time ordering reduces the final straggler tail.
+        # Worker count remains the explicit memory-pressure control.
+        pending.sort(
+            key=lambda item: (
+                item[0].K,
+                1.0 / item[0].epsilon,
+                item[0].theta,
+                item[0].T0,
+            ),
+            reverse=True,
+        )
+    failures: list[tuple[RingCase, str]] = []
+
+    def accept(case: RingCase, outcome: RingCaseOutcome) -> None:
+        case_rows = list(outcome.rows)
+        _merge_rows(rows, case_rows)
+        completed.update(
+            str(row["run_id"])
+            for row in case_rows
+            if str(row["status"]) == "complete"
+        )
+        commit()
+        LOGGER.info(
+            "ring checkpoint part=%s graph=%s K=%d T0=%g theta=%g "
+            "epsilon=%g rows=%d",
+            case.part,
+            case.graph_family,
+            case.K,
+            case.T0,
+            case.theta,
+            case.epsilon,
+            len(rows),
+        )
+        if outcome.failure_message is not None:
+            failures.append((case, outcome.failure_message))
+
+    if workers == 1:
+        for case, case_completed in pending:
+            try:
+                accept(
+                    case,
+                    _execute_ring_case(
+                        resolved,
+                        resolved_json,
+                        metadata_json,
+                        case,
+                        case_completed,
+                    ),
                 )
-                % case["K"],
-                status="timeout" if isinstance(error, TimeoutError) else "failed",
-            )
-            failed["error_message"] = f"{type(error).__name__}: {error}"
-            rows.append(failed)
-            commit()
-            raise
-
-    for K_value in resolved["K"]:
-        K = int(K_value)
-        graph = cycle_graph(K)
-        for T0_value in resolved["temperature"]:
-            for theta_value in resolved["poisson_mean"]:
-                for epsilon_value in resolved["epsilon"]:
-                    run_case_or_record(
-                        part="primary",
-                        graph=graph,
-                        K=K,
-                        T0=float(T0_value),
-                        theta=float(theta_value),
-                        epsilon=float(epsilon_value),
-                        repetitions=int(resolved["paired_seeds"]),
+            except Exception as error:
+                message = f"{type(error).__name__}: {error}"
+                accept(
+                    case,
+                    RingCaseOutcome(
+                        (
+                            _case_failure_row(
+                                case, error, resolved, resolved_json, metadata_json
+                            ),
+                        ),
+                        message,
+                    ),
+                )
+    elif pending:
+        context = multiprocessing.get_context("spawn")
+        with ProcessPoolExecutor(max_workers=workers, mp_context=context) as executor:
+            future_cases = {
+                executor.submit(
+                    _execute_ring_case,
+                    resolved,
+                    resolved_json,
+                    metadata_json,
+                    case,
+                    case_completed,
+                ): case
+                for case, case_completed in pending
+            }
+            for future in as_completed(future_cases):
+                case = future_cases[future]
+                try:
+                    accept(case, future.result())
+                except Exception as error:
+                    message = f"{type(error).__name__}: {error}"
+                    accept(
+                        case,
+                        RingCaseOutcome(
+                            (
+                                _case_failure_row(
+                                    case,
+                                    error,
+                                    resolved,
+                                    resolved_json,
+                                    metadata_json,
+                                ),
+                            ),
+                            message,
+                        ),
                     )
-                    commit()
 
-    controls = resolved["geometry_controls"]
-    if bool(controls["enabled"]):
-        K = int(controls["K"])
-        for family in map(str, controls["graph_families"]):
-            graph = _action_graph(
-                family,
-                K,
-                int(resolved["seed"]),
-                degree=int(controls["expander_degree"]),
-            )
-            run_case_or_record(
-                part="geometry_control",
-                graph=graph,
-                K=K,
-                T0=float(controls["temperature"]),
-                theta=float(controls["poisson_mean"]),
-                epsilon=float(controls["epsilon"]),
-                repetitions=int(controls["paired_seeds"]),
-            )
-            commit()
+    if failures:
+        examples = "; ".join(
+            f"{case.graph_family}/K={case.K}: {message}"
+            for case, message in failures[:3]
+        )
+        raise RuntimeError(
+            f"{len(failures)} ring-planning case(s) failed; raw failures were "
+            f"checkpointed. First failures: {examples}"
+        )
     return validate_results(pd.DataFrame(rows))
 
 
@@ -1028,6 +1288,8 @@ def summarize_ring_planning(
         "anchor_samples",
         "inner_samples",
         "subset_size",
+        "execution_workers",
+        "timing_mode",
         "config_json",
     ]
     repetitions = 2000 if resolved is None else int(resolved["bootstrap_repetitions"])

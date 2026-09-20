@@ -131,6 +131,7 @@ def plot_ring_planning_figure(
         "unique_actions_touched_median",
         "online_seconds_median",
         "graph_ball_size_median",
+        "timing_mode",
     }
     missing = required - set(summary.columns)
     if missing:
@@ -181,7 +182,25 @@ def plot_ring_planning_figure(
     axes[0, 2].set_ylabel("Unique actions touched")
     axes[0, 2].set_title("C  Action scaling")
 
-    _method_lines(axes[1, 0], selected, "K", "online_seconds_median", log_x=True, log_y=True)
+    isolated_timing = selected.loc[selected["timing_mode"] == "isolated"]
+    if isolated_timing.empty:
+        axes[1, 0].text(
+            0.5,
+            0.5,
+            "Concurrent run: use workers=1\nfor paper-ready runtime",
+            ha="center",
+            va="center",
+            transform=axes[1, 0].transAxes,
+        )
+    else:
+        _method_lines(
+            axes[1, 0],
+            isolated_timing,
+            "K",
+            "online_seconds_median",
+            log_x=True,
+            log_y=True,
+        )
     axes[1, 0].set_xlabel("Number of actions, K")
     axes[1, 0].set_ylabel("Online planning time (s)")
     axes[1, 0].set_title("D  Runtime scaling")
