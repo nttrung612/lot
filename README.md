@@ -3,15 +3,17 @@
 Numerical experiments for **What Action Geometry Buys: A Design Space for
 Optimal-Transport Bellman Backups**.
 
-The repository currently implements milestones M0-M5: configuration loading,
+The repository currently implements milestones M0-M6: configuration loading,
 result validation, graph construction, exact and normalized finite-walk heat
 kernels, reusable Poisson-tail certificates, stable LOT backups, lazy local
 heat columns, operation accounting, and deterministic validation on all planned
 small graph families, the kernel design-map experiment with a Figure 1 draft,
 the sharp-pruning/Poisson-truncation experiment with a Figure 2 draft, and the
 stochastic ring-control environment with dense target references and baseline
-planners, and the end-to-end paired-seed ring study with Figure 3. Later
-geometry-learning and control studies are not yet implemented.
+planners, the end-to-end paired-seed ring study with Figure 3, and reward-free
+transition-geometry learning with reward transfer, deterministic propagation
+checks, a sample-threshold table, and a paper-ready figure. Later control
+studies are not yet implemented.
 
 ## Setup and checks
 
@@ -24,6 +26,7 @@ uv run python scripts/check_numerics.py --config configs/numerics.yaml
 uv run python scripts/run_kernel_map.py --config configs/kernel_map.yaml
 uv run python scripts/run_pruning.py --config configs/pruning.yaml
 uv run python scripts/run_ring_planning.py --config configs/ring_planning.yaml
+uv run python scripts/run_geometry_learning.py --config configs/geometry_learning.yaml
 uv run python scripts/make_all_figures.py
 ```
 
@@ -75,3 +78,15 @@ results. Experiment raw, summary, and figure artifacts belong in `outputs/raw/`,
   plug-in Monte Carlo baselines are not presented as certified estimators.
   Figure 3 keeps MaxEnt, hard max, diffusion-Gibbs, expander, and permuted-graph
   targets separate from the primary cycle exact-heat comparison.
+- M6 implements the paper's reward-free signatures
+  `z_a = E[e_{S'} - e_S]`, shared state Laplacian, and transition-diffusion
+  cost. Learned and oracle-cost fixed points always use the same true ring MDP
+  transition kernel, so their difference is geometry error, not model error.
+  The primary probe distribution is fixed, reward-independent, full-support,
+  and nonuniform. This is necessary because uniform `nu` is stationary under
+  every translation action on the ring and would force all population
+  signatures and costs to zero; the uniform-probe case is retained as an
+  explicit cost-only ablation. One learned geometry is reused across every
+  reward goal at a given paired seed and sample count, and the anchor priors
+  are frozen to the configured reference goal rather than changing with the
+  reward task.

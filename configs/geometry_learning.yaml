@@ -1,6 +1,42 @@
 experiment: geometry_learning
 seed: 0
+K: 16
 samples_per_action: [16, 32, 64, 128, 256, 512, 1024, 2048]
 goal_fractions: [0.0, 0.2, 0.4, 0.6, 0.8]
 paired_seeds: 30
 
+gamma: 0.95
+action_cost: 0.05
+anchor_uniform_mass: 0.05
+root_state_fraction: 0.5
+anchor_reference_fraction: 0.0
+
+# Uniform nu makes every population signature exactly zero on this
+# translation-invariant ring. The primary therefore uses a fixed,
+# reward-independent full-support probe; uniform nu remains an ablation.
+probe:
+  kind: spike_uniform
+  uniform_mass: 0.1
+  center_fraction: 0.0
+uniform_probe_ablation:
+  enabled: true
+
+geometry:
+  diffusion_time: 1.0
+  kappa_C: 1.0
+regularization:
+  tau: 0.1
+  lambda_: 1.0
+reference:
+  tolerance: 1.0e-9
+  max_iterations: 5000
+
+delta: 0.05
+value_error_thresholds: [0.1, 0.05, 0.02]
+bootstrap_repetitions: 2000
+
+raw_output: outputs/raw/geometry_learning.parquet
+summary_output: outputs/summaries/geometry_learning.csv
+table_output: outputs/summaries/table1_geometry_learning.csv
+figure_png: outputs/figures/geometry_learning.png
+figure_pdf: outputs/figures/geometry_learning.pdf

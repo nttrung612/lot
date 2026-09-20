@@ -369,7 +369,13 @@ Place these in separate plots or clearly label the target column.
 
 ### Data
 
-Use the ring-control transition system. Draw $n$ transitions per action with states sampled from uniform $\nu$:
+Use the ring-control transition system. Draw $n$ transitions per action from a
+fixed, reward-independent, full-support probe distribution $\nu$. The primary
+probe is a fixed-state/uniform mixture. A uniform-$\nu$ ablation is mandatory:
+on the translation-invariant ring it is stationary under every action, hence
+$z_a=P_a^\top\nu-\nu=0$ and $C_t=0$ for all actions. It cannot serve as the
+primary geometry-learning task. This ablation records the degeneracy rather
+than silently changing the action signature. Use:
 
 ```text
 n in {16, 32, 64, 128, 256, 512, 1024, 2048}
@@ -603,7 +609,7 @@ Appendix:
 - [ ] M3: Sharp pruning and Poisson-truncation experiment complete.
 - [x] M4: Ring environment, dense references, and baseline planners implemented.
 - [x] M5: End-to-end synthetic planning results complete.
-- [ ] M6: Reward-free learned-geometry experiment complete.
+- [x] M6: Reward-free learned-geometry experiment complete.
 - [ ] M7: Pendulum wrapper and converged reference solution complete.
 - [ ] M8: Pendulum baselines and final figures complete.
 - [ ] M9: Effective-resistance appendix figure complete.
