@@ -3,7 +3,7 @@
 Numerical experiments for **What Action Geometry Buys: A Design Space for
 Optimal-Transport Bellman Backups**.
 
-The repository currently implements milestones M0-M7: configuration loading,
+The repository currently implements milestones M0-M8: configuration loading,
 result validation, graph construction, exact and normalized finite-walk heat
 kernels, reusable Poisson-tail certificates, stable LOT backups, lazy local
 heat columns, operation accounting, and deterministic validation on all planned
@@ -14,8 +14,8 @@ planners, the end-to-end paired-seed ring study with Figure 3, and reward-free
 transition-geometry learning with reward transfer, deterministic propagation
 checks, a sample-threshold table, and a paper-ready figure, plus an exact
 ``Pendulum-v1`` discrete-torque wrapper and a development/validation-grid
-FullExactHeat fitted-value reference. Pendulum baselines and final figures are
-reserved for M8.
+FullExactHeat fitted-value reference, all planned Pendulum baselines, radius
+ablations, behavioral evaluation, checkpointed execution, and Figure 4.
 
 ## Setup and checks
 
@@ -29,6 +29,8 @@ uv run python scripts/run_kernel_map.py --config configs/kernel_map.yaml
 uv run python scripts/run_pruning.py --config configs/pruning.yaml
 uv run python scripts/run_ring_planning.py --config configs/ring_planning.yaml
 uv run python scripts/run_geometry_learning.py --config configs/geometry_learning.yaml
+uv run python scripts/run_pendulum_reference.py --config configs/pendulum_reference.yaml
+uv run python scripts/run_pendulum.py --config configs/pendulum_smoke.yaml
 uv run python scripts/run_pendulum.py --config configs/pendulum.yaml
 uv run python scripts/make_all_figures.py
 ```
@@ -111,3 +113,22 @@ value tolerance, so the refined artifact is retained with
 `reference_accepted=false` as required by the experiment plan. Set
 `reference.require_grid_convergence=true` to make that condition a hard CLI
 failure when testing a finer reference grid.
+
+- M8 uses one explicit state-dependent `nominal_pd` anchor for every method;
+  this makes local torque neighborhoods meaningful without changing the true
+  Pendulum dynamics. `truncated_heat_local` constructs sparse heat columns
+  lazily from path adjacency. Exact-heat pruning and randomized estimators keep
+  `reference_target=exact_heat`, while truncated heat, local uniform/RBF,
+  MaxEnt, hard max, squared-torque LOT, and permuted geometry retain their own
+  target labels. Index heat keeps a fixed graph radius; physical heat scales
+  the primary radius with action resolution and therefore does not claim
+  action-cardinality-independent cost. Results checkpoint atomically after
+  each `(K, heat_scaling, temperature)` case and resume only matching configs.
+
+The smoke configuration runs in seconds to a few minutes depending on the
+machine. A measured single-core 129x129 benchmark at `K=51` took 18.4 seconds
+for FullExactHeat and 138.9 seconds for radius-8 local heat before Anderson
+acceleration. Extrapolating the complete 30-case paper grid with eleven methods
+gives roughly 36-72 hours on one CPU, with physical-heat cases at `K=401/801`
+dominating. The command is resumable; isolated single-thread timing should be
+used for the paper runtime panels.

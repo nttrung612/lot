@@ -1,0 +1,43 @@
+experiment: pendulum_smoke
+seed: 0
+K: [21]
+heat_scalings: [index_heat, physical_heat]
+diffusion_time:
+  index_heat: 2.0
+  physical_heat: 0.02
+temperature: [0.05]
+gamma: 0.9
+reward_scale: 16.2736044
+development_grid: [33, 33]
+evaluation_reset_states: 10
+primary_radius: 4
+physical_radius_reference_K: 21
+radii: [1, 2, 4, 8]
+endpoint_samples: 8
+random_subset_size: 0
+planning:
+  tolerance: 1.0e-5
+  max_iterations: 1000
+  state_chunk_size: 64
+  progress_interval: 0
+  anderson_depth: 3
+behavior:
+  enabled: true
+  episodes: 10
+  horizon: 50
+  K: 21
+  heat_scaling: physical_heat
+  temperature: 0.05
+radius_ablation:
+  enabled: true
+  K: 21
+  heat_scaling: physical_heat
+  temperature: 0.05
+figure:
+  K: 21
+  heat_scaling: physical_heat
+  temperature: 0.05
+raw_output: outputs/raw/pendulum_smoke.parquet
+summary_output: outputs/summaries/pendulum_smoke.csv
+figure_png: outputs/figures/figure4_pendulum_smoke.png
+figure_pdf: outputs/figures/figure4_pendulum_smoke.pdf

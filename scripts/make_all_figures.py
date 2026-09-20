@@ -21,6 +21,8 @@ from lot_experiments.kernel_map import resolve_kernel_map_config
 from lot_experiments.plotting.kernel_map import plot_kernel_map_figure
 from lot_experiments.plotting.learning import plot_geometry_learning_figure
 from lot_experiments.plotting.planning import plot_ring_planning_figure
+from lot_experiments.plotting.pendulum import plot_pendulum_figure
+from lot_experiments.pendulum_experiment import resolve_pendulum_experiment_config
 from lot_experiments.plotting.pruning import plot_pruning_figure
 from lot_experiments.pruning_experiment import resolve_pruning_config
 from lot_experiments.ring_planning import resolve_ring_planning_config
@@ -39,6 +41,9 @@ def main() -> None:
         "--geometry-learning-config",
         type=Path,
         default=Path("configs/geometry_learning.yaml"),
+    )
+    parser.add_argument(
+        "--pendulum-config", type=Path, default=Path("configs/pendulum.yaml")
     )
     arguments = parser.parse_args()
     resolved = resolve_kernel_map_config(load_config(arguments.kernel_map_config))
@@ -76,6 +81,16 @@ def main() -> None:
         geometry,
         png_path=geometry["figure_png"],
         pdf_path=geometry["figure_pdf"],
+    )
+    pendulum = resolve_pendulum_experiment_config(
+        load_config(arguments.pendulum_config)
+    )
+    pendulum_summary = pd.read_csv(pendulum["summary_output"])
+    plot_pendulum_figure(
+        pendulum_summary,
+        pendulum,
+        png_path=pendulum["figure_png"],
+        pdf_path=pendulum["figure_pdf"],
     )
 
 

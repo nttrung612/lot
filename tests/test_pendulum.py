@@ -18,6 +18,8 @@ from lot_experiments.planners.dense import batched_lot_backup
 def test_pendulum_model_matches_official_gymnasium_dynamics():
     model = PendulumDiscreteEnv(K=5)
     np.testing.assert_allclose(torque_grid(5), [-2.0, -1.0, 0.0, 1.0, 2.0])
+    indices = model.nominal_action_indices([0.0, 1.0], [0.0, 0.0])
+    np.testing.assert_array_equal(indices, [2, 0])
     theta, theta_dot, torque = 0.73, -1.4, 1.1
     next_theta, next_theta_dot = model.transition(theta, theta_dot, torque)
     raw_reward = model.raw_reward(theta, theta_dot, torque)
@@ -75,6 +77,18 @@ def test_spectral_path_heat_and_backup_match_dense_reference():
     )
     np.testing.assert_allclose(actual_values, expected_values, atol=3e-15)
     np.testing.assert_allclose(actual_policy, expected_policy, atol=3e-15)
+
+    anchors = np.array([0, 2, 5, 7])
+    selected_values, selected_policy = full_exact_heat_backup(
+        q_values, operator, 0.23, anchor_indices=anchors
+    )
+    one_hot = np.zeros((len(q_values), K))
+    one_hot[np.arange(len(q_values)), anchors] = 1.0
+    expected_selected_values, expected_selected_policy = batched_lot_backup(
+        q_values, dense_heat, one_hot, 0.23
+    )
+    np.testing.assert_allclose(selected_values, expected_selected_values, atol=3e-15)
+    np.testing.assert_allclose(selected_policy, expected_selected_policy, atol=3e-15)
 
 
 def test_small_fitted_value_reference_converges_with_valid_policy():

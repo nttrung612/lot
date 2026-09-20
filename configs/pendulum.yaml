@@ -23,7 +23,56 @@ reference:
   state_chunk_size: 256
   anderson_depth: 5
   progress_interval: 25
-  anchor_prior: uniform
+  anchor_prior: nominal_pd
+  anchor_angle_gain: 2.0
+  anchor_velocity_gain: 0.5
   require_grid_convergence: false
-raw_output: outputs/raw/pendulum_reference.parquet
-solution_output: outputs/raw/pendulum_reference_solution.npz
+raw_output: outputs/raw/pendulum.parquet
+methods:
+  - full_exact_heat
+  - exact_heat_topmass
+  - truncated_heat_local
+  - poisson_endpoint_mc
+  - uniform_random_subset
+  - local_uniform_neighborhood
+  - local_rbf_neighborhood
+  - uniform_maxent
+  - hard_max
+  - squared_torque_lot
+  - permuted_path_graph
+radii: [2, 4, 8, 16]
+primary_radius: 16
+physical_radius_reference_K: 101
+topmass_alpha: 0.01
+endpoint_samples: 16
+random_subset_size: 0
+rbf_sigma: 0.25
+squared_torque_lambda: 0.25
+planning:
+  tolerance: 1.0e-6
+  max_iterations: 3000
+  state_chunk_size: 256
+  progress_interval: 100
+  anderson_depth: 5
+anchor:
+  angle_gain: 2.0
+  velocity_gain: 0.5
+behavior:
+  enabled: true
+  episodes: 100
+  horizon: 200
+  K: 101
+  heat_scaling: physical_heat
+  temperature: 0.05
+radius_ablation:
+  enabled: true
+  K: 101
+  heat_scaling: physical_heat
+  temperature: 0.05
+figure:
+  K: 101
+  heat_scaling: physical_heat
+  temperature: 0.05
+summary_output: outputs/summaries/pendulum.csv
+figure_png: outputs/figures/figure4_pendulum.png
+figure_pdf: outputs/figures/figure4_pendulum.pdf

@@ -80,7 +80,17 @@ class PathHeatOperator:
         """
 
         if self.K > self.dense_threshold:
-            return None
+            identity = np.eye(self.K, dtype=np.float64)
+            coefficients = dct(identity, type=2, norm="ortho", axis=-1)
+            kernel = idct(
+                coefficients * self.multipliers,
+                type=2,
+                norm="ortho",
+                axis=-1,
+            )
+            np.maximum(kernel, 0.0, out=kernel)
+            kernel /= kernel.sum(axis=0, keepdims=True)
+            return kernel
         theta = 2.0 * self.edge_weight * self.diffusion_time
         if theta == 0.0:
             return np.eye(self.K, dtype=np.float64)
@@ -132,6 +142,7 @@ def full_exact_heat_backup(
     T0: float,
     *,
     return_policy: bool = True,
+    anchor_indices: ArrayLike | None = None,
 ) -> tuple[FloatArray, FloatArray | None]:
     """Evaluate the uniform-anchor FullExactHeat backup for many states."""
 
@@ -142,15 +153,32 @@ def full_exact_heat_backup(
         raise ValueError("T0 must be finite and positive")
     maxima = np.max(q, axis=1)
     exponentials = np.exp((q - maxima[:, None]) / T0)
-    partitions = heat.apply(exponentials)
+    anchors = None if anchor_indices is None else np.asarray(anchor_indices, dtype=np.int64)
+    if anchors is not None:
+        if anchors.shape != (len(q),) or np.any(anchors < 0) or np.any(anchors >= heat.K):
+            raise ValueError("anchor_indices must contain one valid anchor per state")
+        kernel = heat.dense_kernel
+        assert kernel is not None
+        selected_columns = kernel[:, anchors].T
+        partitions = np.sum(exponentials * selected_columns, axis=1)
+    else:
+        partitions = heat.apply(exponentials)
     tiny = np.finfo(np.float64).tiny
     if np.min(partitions) < -1e-12 or not np.all(np.isfinite(partitions)):
         raise FloatingPointError("path heat produced invalid partition values")
     np.maximum(partitions, tiny, out=partitions)
-    values = maxima + T0 * np.mean(np.log(partitions), axis=1)
+    values = (
+        maxima + T0 * np.log(partitions)
+        if anchors is not None
+        else maxima + T0 * np.mean(np.log(partitions), axis=1)
+    )
     if not return_policy:
         return values, None
 
+    if anchors is not None:
+        policy = exponentials * selected_columns / partitions[:, None]
+        policy /= policy.sum(axis=1, keepdims=True)
+        return values, policy
     inverse_partitions = (1.0 / heat.K) / partitions
     mixture = heat.apply(inverse_partitions)
     if np.min(mixture) < -1e-12 or not np.all(np.isfinite(mixture)):
@@ -185,6 +213,8 @@ def _bellman_values(
     T0: float,
     heat: PathHeatOperator,
     state_chunk_size: int,
+    anchor_angle_gain: float,
+    anchor_velocity_gain: float,
 ) -> FloatArray:
     theta, theta_dot = grid.states()
     updated = np.empty(grid.size, dtype=np.float64)
@@ -193,8 +223,14 @@ def _bellman_values(
         q_values = environment.q_values(
             values, grid, theta[start:stop], theta_dot[start:stop], gamma
         )
+        anchors = environment.nominal_action_indices(
+            theta[start:stop],
+            theta_dot[start:stop],
+            angle_gain=anchor_angle_gain,
+            velocity_gain=anchor_velocity_gain,
+        )
         updated[start:stop], _ = full_exact_heat_backup(
-            q_values, heat, T0, return_policy=False
+            q_values, heat, T0, return_policy=False, anchor_indices=anchors
         )
     return updated.reshape(grid.shape)
 
@@ -228,6 +264,8 @@ def solve_pendulum_reference(
     state_chunk_size: int,
     anderson_depth: int = 5,
     progress_interval: int = 25,
+    anchor_angle_gain: float = 2.0,
+    anchor_velocity_gain: float = 0.5,
     evaluation_states: Sequence[tuple[float, float]] = EVALUATION_STATES,
     initial_values: ArrayLike | None = None,
     initial_grid: PendulumStateGrid | None = None,
@@ -279,6 +317,8 @@ def solve_pendulum_reference(
             T0=T0,
             heat=heat,
             state_chunk_size=state_chunk_size,
+            anchor_angle_gain=anchor_angle_gain,
+            anchor_velocity_gain=anchor_velocity_gain,
         )
         differences = updated - values
         reference_difference = float(differences[reference_index])
@@ -306,6 +346,8 @@ def solve_pendulum_reference(
                 T0=T0,
                 heat=heat,
                 state_chunk_size=state_chunk_size,
+                anchor_angle_gain=anchor_angle_gain,
+                anchor_velocity_gain=anchor_velocity_gain,
             )
             sweeps += 1
             residual = float(np.max(np.abs(checked - fixed_values)))
@@ -355,7 +397,15 @@ def solve_pendulum_reference(
     q_values = environment.q_values(
         values, grid, evaluation[:, 0], evaluation[:, 1], gamma
     )
-    evaluation_values, policies = full_exact_heat_backup(q_values, heat, T0)
+    evaluation_anchors = environment.nominal_action_indices(
+        evaluation[:, 0],
+        evaluation[:, 1],
+        angle_gain=anchor_angle_gain,
+        velocity_gain=anchor_velocity_gain,
+    )
+    evaluation_values, policies = full_exact_heat_backup(
+        q_values, heat, T0, anchor_indices=evaluation_anchors
+    )
     assert policies is not None
     action_evaluations = sweeps * grid.size * environment.K + len(evaluation) * environment.K
     return PendulumReferenceSolution(
@@ -400,7 +450,9 @@ def resolve_pendulum_config(config: Mapping[str, Any]) -> dict[str, Any]:
             "state_chunk_size": 256,
             "anderson_depth": 5,
             "progress_interval": 25,
-            "anchor_prior": "uniform",
+            "anchor_prior": "nominal_pd",
+            "anchor_angle_gain": 2.0,
+            "anchor_velocity_gain": 0.5,
             "require_grid_convergence": False,
         },
         "raw_output": "outputs/raw/pendulum_reference.parquet",
@@ -435,16 +487,11 @@ def resolve_pendulum_config(config: Mapping[str, Any]) -> dict[str, Any]:
     K = int(reference["K"])
     if K not in {int(value) for value in resolved["K"]}:
         raise ValueError("reference.K must be included in the declared action grids")
-    if K > 256:
-        raise ValueError(
-            "M7's tail-stable dense FullExactHeat reference currently requires K <= "
-            "256; larger action-grid references need the planned M8 log-domain backend"
-        )
     scaling = str(reference["heat_scaling"])
     if scaling not in resolved["heat_scalings"] or scaling not in resolved["diffusion_time"]:
         raise ValueError("reference heat scaling is not declared")
-    if reference["anchor_prior"] != "uniform":
-        raise ValueError("M7 currently specifies the explicit uniform anchor prior")
+    if reference["anchor_prior"] != "nominal_pd":
+        raise ValueError("Pendulum experiments require the explicit nominal_pd anchor prior")
     if float(reference["temperature"]) <= 0.0:
         raise ValueError("reference.temperature must be positive")
     if float(resolved["diffusion_time"][scaling]) < 0.0:
@@ -538,6 +585,8 @@ def run_pendulum_reference(config: Mapping[str, Any]) -> pd.DataFrame:
         "anderson_depth": int(reference["anderson_depth"]),
         "progress_interval": int(reference["progress_interval"]),
         "evaluation_states": evaluation_states,
+        "anchor_angle_gain": float(reference["anchor_angle_gain"]),
+        "anchor_velocity_gain": float(reference["anchor_velocity_gain"]),
     }
     development = solve_pendulum_reference(environment, development_grid, **solver_kwargs)
     validation = solve_pendulum_reference(

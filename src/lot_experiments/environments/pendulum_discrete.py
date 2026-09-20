@@ -163,6 +163,44 @@ class PendulumDiscreteEnv:
     def action_spacing(self) -> float:
         return 2.0 * self.max_torque / (self.K - 1)
 
+    def nominal_torque(
+        self,
+        theta: ArrayLike,
+        theta_dot: ArrayLike,
+        *,
+        angle_gain: float = 2.0,
+        velocity_gain: float = 0.5,
+    ) -> FloatArray:
+        """Return a clipped PD anchor torque directed toward the upright state."""
+
+        if angle_gain < 0.0 or velocity_gain < 0.0:
+            raise ValueError("nominal-controller gains must be nonnegative")
+        angle, velocity = np.broadcast_arrays(
+            np.asarray(theta, dtype=np.float64), np.asarray(theta_dot, dtype=np.float64)
+        )
+        return np.clip(
+            -angle_gain * normalize_angle(angle) - velocity_gain * velocity,
+            -self.max_torque,
+            self.max_torque,
+        )
+
+    def nominal_action_indices(
+        self,
+        theta: ArrayLike,
+        theta_dot: ArrayLike,
+        *,
+        angle_gain: float = 2.0,
+        velocity_gain: float = 0.5,
+    ) -> NDArray[np.int64]:
+        torque = self.nominal_torque(
+            theta,
+            theta_dot,
+            angle_gain=angle_gain,
+            velocity_gain=velocity_gain,
+        )
+        indices = np.rint((torque + self.max_torque) / self.action_spacing)
+        return np.clip(indices, 0, self.K - 1).astype(np.int64)
+
     def transition(
         self, theta: ArrayLike, theta_dot: ArrayLike, torque: ArrayLike
     ) -> tuple[FloatArray, FloatArray]:
@@ -210,6 +248,8 @@ class PendulumDiscreteEnv:
         theta: ArrayLike,
         theta_dot: ArrayLike,
         gamma: float,
+        *,
+        action_indices: ArrayLike | None = None,
     ) -> FloatArray:
         """Evaluate all discrete actions for a batch of continuous states."""
 
@@ -219,7 +259,14 @@ class PendulumDiscreteEnv:
         velocities = np.asarray(theta_dot, dtype=np.float64).reshape(-1, 1)
         if angles.shape != velocities.shape:
             raise ValueError("theta and theta_dot must contain the same number of states")
-        actions = self.actions[None, :]
+        if action_indices is None:
+            selected_actions = self.actions
+        else:
+            indices = np.asarray(action_indices, dtype=np.int64)
+            if indices.ndim != 1 or np.any(indices < 0) or np.any(indices >= self.K):
+                raise ValueError("action_indices must be valid one-dimensional indices")
+            selected_actions = self.actions[indices]
+        actions = selected_actions[None, :]
         next_angle, next_velocity = self.transition(angles, velocities, actions)
         continuation = grid.interpolate(values, next_angle, next_velocity)
         return self.planning_reward(angles, velocities, actions) + gamma * continuation
