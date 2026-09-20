@@ -127,14 +127,28 @@ def plot_pendulum_figure(
     axes[0, 1].set_ylabel("Mean policy L1 error")
     axes[0, 1].set_title("B  Policy accuracy/computation")
 
+    timing = (
+        primary.loc[primary["timing_mode"] == "isolated"]
+        if "timing_mode" in primary
+        else primary
+    )
+    if timing.empty:
+        axes[0, 2].text(
+            0.5,
+            0.5,
+            "Concurrent run: use workers=1\nfor paper-ready runtime",
+            ha="center",
+            va="center",
+            transform=axes[0, 2].transAxes,
+        )
     for scaling, linestyle in (("index_heat", "-"), ("physical_heat", "--")):
-        selected_scaling = primary.loc[
-            (primary["heat_scaling"] == scaling)
+        selected_scaling = timing.loc[
+            (timing["heat_scaling"] == scaling)
             & np.isclose(
-                primary["temperature"].astype(float),
+                timing["temperature"].astype(float),
                 float(figure_config["temperature"]),
             )
-            & (primary["method"].isin(["full_exact_heat", "truncated_heat_local"]))
+            & (timing["method"].isin(["full_exact_heat", "truncated_heat_local"]))
         ]
         for method in ("full_exact_heat", "truncated_heat_local"):
             selected = selected_scaling.loc[selected_scaling["method"] == method].sort_values("K")

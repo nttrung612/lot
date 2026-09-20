@@ -54,6 +54,20 @@ their accuracy and operation counts are valid, but the runtime panel is
 intentionally withheld. Use `execution.workers=1` for paper-ready wall-clock
 measurements.
 
+M8 Pendulum uses the same parent-only checkpointing pattern. The full
+configuration requests 40 workers; because the grid contains 30 independent
+`(K, heat_scaling, temperature)` cases, at most 30 workers are active at once:
+
+```bash
+uv run python scripts/run_pendulum.py --config configs/pendulum.yaml
+```
+
+All methods for one case stay in the same worker and share its FullExactHeat
+reference. Parallel Pendulum rows use `timing_mode=concurrent`, so Figure 4
+withholds its runtime panel while retaining accuracy, policy, behavior, and
+operation-count panels. For publishable timing, run with
+`execution.workers=1` and distinct output paths.
+
 The diagnostic is deliberately small (`K <= 16`) and does not write experiment
 results. Experiment raw, summary, and figure artifacts belong in `outputs/raw/`,
 `outputs/summaries/`, and `outputs/figures/`, respectively.

@@ -7,7 +7,10 @@ import hashlib
 import json
 import logging
 import math
+import multiprocessing
+import tempfile
 from collections.abc import Mapping, Sequence
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -32,7 +35,7 @@ from lot_experiments.pendulum_reference import EVALUATION_STATES, PathHeatOperat
 from lot_experiments.planners.poisson_mc import sample_poisson_endpoint
 from lot_experiments.pruning import top_mass_mask
 from lot_experiments.reproducibility import rng_for, run_metadata
-from lot_experiments.results import result_row, write_results_atomic
+from lot_experiments.results import result_row, validate_results, write_results_atomic
 
 
 FloatArray = NDArray[np.float64]
@@ -646,6 +649,7 @@ def resolve_pendulum_experiment_config(config: Mapping[str, Any]) -> dict[str, A
         "reward_scale": 16.2736044,
         "development_grid": [129, 129],
         "evaluation_reset_states": 100,
+        "execution": {"workers": 1},
         "methods": [*SAME_TARGET_METHODS, *DIFFERENT_TARGET_METHODS],
         "radii": [2, 4, 8, 16],
         "primary_radius": 16,
@@ -685,7 +689,15 @@ def resolve_pendulum_experiment_config(config: Mapping[str, Any]) -> dict[str, A
     }
     resolved = copy.deepcopy(defaults)
     for key, value in config.items():
-        if key in {"planning", "anchor", "behavior", "radius_ablation", "figure", "diffusion_time"} and isinstance(value, Mapping):
+        if key in {
+            "planning",
+            "anchor",
+            "behavior",
+            "radius_ablation",
+            "figure",
+            "diffusion_time",
+            "execution",
+        } and isinstance(value, Mapping):
             resolved[key].update(value)
         else:
             resolved[key] = copy.deepcopy(value)
@@ -697,6 +709,13 @@ def resolve_pendulum_experiment_config(config: Mapping[str, Any]) -> dict[str, A
         raise ValueError("M8 requires FullExactHeat in every case")
     if int(resolved["primary_radius"]) < 0:
         raise ValueError("primary_radius must be nonnegative")
+    workers = resolved["execution"]["workers"]
+    if (
+        isinstance(workers, bool)
+        or not isinstance(workers, (int, np.integer))
+        or int(workers) < 1
+    ):
+        raise ValueError("execution.workers must be a positive integer")
     return resolved
 
 
@@ -705,7 +724,7 @@ def _run_id(parts: tuple[Any, ...], resolved_json: str) -> str:
     return hashlib.blake2b(payload, digest_size=10).hexdigest()
 
 
-def run_pendulum_experiment(config: Mapping[str, Any]) -> pd.DataFrame:
+def _run_pendulum_experiment_serial(config: Mapping[str, Any]) -> pd.DataFrame:
     resolved = resolve_pendulum_experiment_config(config)
     resolved_json = config_json(resolved)
     metadata = run_metadata(resolved)
@@ -1024,4 +1043,348 @@ def run_pendulum_experiment(config: Mapping[str, Any]) -> pd.DataFrame:
     frame = pd.DataFrame(rows)
     write_results_atomic(frame, resolved["raw_output"])
     write_results_atomic(frame, resolved["summary_output"])
+    return frame
+
+
+@dataclass(frozen=True)
+class PendulumCase:
+    K: int
+    heat_scaling: str
+    temperature: float
+
+
+def _pendulum_cases(resolved: Mapping[str, Any]) -> list[PendulumCase]:
+    return [
+        PendulumCase(int(K), str(scaling), float(temperature))
+        for K in resolved["K"]
+        for scaling in resolved["heat_scalings"]
+        for temperature in resolved["temperature"]
+    ]
+
+
+def _case_has_ablation(case: PendulumCase, resolved: Mapping[str, Any]) -> bool:
+    ablation = resolved["radius_ablation"]
+    return bool(ablation["enabled"]) and (
+        case.K == int(ablation["K"])
+        and case.heat_scaling == str(ablation["heat_scaling"])
+        and np.isclose(case.temperature, float(ablation["temperature"]))
+    )
+
+
+def _case_run_ids(
+    case: PendulumCase, resolved: Mapping[str, Any], resolved_json: str
+) -> set[str]:
+    identifiers = {
+        _run_id(
+            (case.K, case.heat_scaling, case.temperature, str(method)),
+            resolved_json,
+        )
+        for method in resolved["methods"]
+    }
+    if _case_has_ablation(case, resolved):
+        identifiers.update(
+            _run_id(
+                (
+                    case.K,
+                    case.heat_scaling,
+                    case.temperature,
+                    "radius_ablation",
+                    int(radius),
+                ),
+                resolved_json,
+            )
+            for radius in resolved["radii"]
+        )
+    return identifiers
+
+
+def _row_matches_case(row: Mapping[str, Any], case: PendulumCase) -> bool:
+    try:
+        return (
+            int(row["K"]) == case.K
+            and str(row["heat_scaling"]) == case.heat_scaling
+            and np.isclose(float(row["temperature"]), case.temperature)
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _merge_rows(
+    rows: list[dict[str, Any]], updates: Sequence[Mapping[str, Any]]
+) -> None:
+    indexed = {str(row["run_id"]): dict(row) for row in rows}
+    indexed.update({str(row["run_id"]): dict(row) for row in updates})
+    rows[:] = [indexed[run_id] for run_id in sorted(indexed)]
+
+
+def _execute_pendulum_case(
+    resolved: Mapping[str, Any],
+    resolved_json: str,
+    metadata: Mapping[str, Any],
+    case: PendulumCase,
+) -> tuple[dict[str, Any], ...]:
+    """Run one independent M8 case without writing shared artifacts."""
+
+    case_config = copy.deepcopy(dict(resolved))
+    case_config.update(
+        {
+            "K": [case.K],
+            "heat_scalings": [case.heat_scaling],
+            "temperature": [case.temperature],
+            "execution": {"workers": 1},
+        }
+    )
+    with tempfile.TemporaryDirectory(prefix="lot-pendulum-case-") as directory:
+        temporary = Path(directory)
+        case_config.update(
+            {
+                "raw_output": str(temporary / "raw.parquet"),
+                "summary_output": str(temporary / "summary.csv"),
+            }
+        )
+        frame = _run_pendulum_experiment_serial(case_config)
+
+    execution_workers = int(resolved["execution"]["workers"])
+    timing_mode = "isolated" if execution_workers == 1 else "concurrent"
+    records = frame.to_dict(orient="records")
+    for row in records:
+        method = str(row["method"])
+        if method == "truncated_heat_local_radius":
+            run_parts = (
+                case.K,
+                case.heat_scaling,
+                case.temperature,
+                "radius_ablation",
+                int(row["radius"]),
+            )
+        else:
+            run_parts = (
+                case.K,
+                case.heat_scaling,
+                case.temperature,
+                method,
+            )
+        row.update(
+            {
+                "run_id": _run_id(run_parts, resolved_json),
+                "git_commit": str(metadata["git_commit"]),
+                "config_json": resolved_json,
+                "execution_workers": execution_workers,
+                "timing_mode": timing_mode,
+                "error_message": "",
+            }
+        )
+    return tuple(records)
+
+
+def _case_failure_row(
+    case: PendulumCase,
+    error: Exception,
+    resolved: Mapping[str, Any],
+    resolved_json: str,
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    workers = int(resolved["execution"]["workers"])
+    row = result_row(
+        experiment="pendulum",
+        run_id=_run_id(
+            (
+                case.K,
+                case.heat_scaling,
+                case.temperature,
+                "experiment_failure",
+            ),
+            resolved_json,
+        ),
+        seed=int(resolved["seed"]),
+        method="experiment_failure",
+        target="exact_heat",
+        graph_family="path",
+        K=case.K,
+        diffusion_time=float(resolved["diffusion_time"][case.heat_scaling]),
+        temperature=case.temperature,
+        gamma=float(resolved["gamma"]),
+        status="failed",
+        git_commit=str(metadata["git_commit"]),
+        config_json=resolved_json,
+    )
+    row.update(
+        {
+            "reference_target": "exact_heat",
+            "heat_scaling": case.heat_scaling,
+            "execution_workers": workers,
+            "timing_mode": "isolated" if workers == 1 else "concurrent",
+            "error_message": f"{type(error).__name__}: {error}",
+        }
+    )
+    return row
+
+
+def run_pendulum_experiment(config: Mapping[str, Any]) -> pd.DataFrame:
+    """Run or resume M8, optionally distributing independent cases."""
+
+    resolved = resolve_pendulum_experiment_config(config)
+    resolved_json = config_json(resolved)
+    metadata = run_metadata(resolved)
+    output = Path(resolved["raw_output"])
+    if output.exists():
+        existing = validate_results(
+            pd.read_parquet(output)
+            if output.suffix == ".parquet"
+            else pd.read_csv(output)
+        )
+        configurations = set(existing["config_json"].astype(str))
+        if configurations and configurations != {resolved_json}:
+            raise ValueError(
+                "raw_output contains a different resolved configuration; "
+                "choose a distinct output path instead of overwriting it"
+            )
+        rows = existing.to_dict(orient="records")
+    else:
+        rows = []
+
+    completed = {
+        str(row["run_id"]) for row in rows if str(row["status"]) == "complete"
+    }
+    cases = _pendulum_cases(resolved)
+    pending: list[PendulumCase] = []
+    for case in cases:
+        expected = _case_run_ids(case, resolved, resolved_json)
+        if expected <= completed:
+            continue
+        pending.append(case)
+        # A case is the checkpoint unit. Drop incomplete/stale rows in memory;
+        # the on-disk checkpoint is replaced only after the rerun finishes.
+        rows = [row for row in rows if not _row_matches_case(row, case)]
+
+    workers = int(resolved["execution"]["workers"])
+    if workers > 1:
+        # Schedule expensive action grids first to reduce the straggler tail.
+        pending.sort(
+            key=lambda item: (
+                item.K,
+                item.heat_scaling == "physical_heat",
+                -item.temperature,
+            ),
+            reverse=True,
+        )
+    effective_workers = min(workers, max(1, len(pending)))
+    LOGGER.info(
+        "Pendulum M8 start workers=%d effective_workers=%d total_cases=%d "
+        "resumed_cases=%d pending_cases=%d checkpoint_rows=%d",
+        workers,
+        effective_workers,
+        len(cases),
+        len(cases) - len(pending),
+        len(pending),
+        len(rows),
+    )
+
+    failures: list[tuple[PendulumCase, str]] = []
+
+    def commit() -> pd.DataFrame:
+        frame = validate_results(pd.DataFrame(rows))
+        write_results_atomic(frame, resolved["raw_output"])
+        write_results_atomic(frame, resolved["summary_output"])
+        return frame
+
+    def accept(case: PendulumCase, case_rows: Sequence[Mapping[str, Any]]) -> None:
+        _merge_rows(rows, case_rows)
+        commit()
+        incomplete = [
+            row for row in case_rows if str(row.get("status")) != "complete"
+        ]
+        if incomplete:
+            failures.append(
+                (
+                    case,
+                    ", ".join(
+                        f"{row.get('method')}={row.get('status')}" for row in incomplete
+                    ),
+                )
+            )
+        LOGGER.info(
+            "Pendulum checkpoint K=%d scaling=%s T0=%g rows=%d",
+            case.K,
+            case.heat_scaling,
+            case.temperature,
+            len(rows),
+        )
+
+    if workers == 1:
+        for case in pending:
+            try:
+                accept(
+                    case,
+                    _execute_pendulum_case(
+                        resolved, resolved_json, metadata, case
+                    ),
+                )
+            except Exception as error:
+                accept(
+                    case,
+                    (
+                        _case_failure_row(
+                            case, error, resolved, resolved_json, metadata
+                        ),
+                    ),
+                )
+    elif pending:
+        context = multiprocessing.get_context("spawn")
+        with ProcessPoolExecutor(
+            max_workers=effective_workers, mp_context=context
+        ) as executor:
+            future_cases = {
+                executor.submit(
+                    _execute_pendulum_case,
+                    resolved,
+                    resolved_json,
+                    metadata,
+                    case,
+                ): case
+                for case in pending
+            }
+            outstanding = set(future_cases)
+            accepted = 0
+            while outstanding:
+                finished, outstanding = wait(
+                    outstanding,
+                    timeout=30.0,
+                    return_when=FIRST_COMPLETED,
+                )
+                if not finished:
+                    LOGGER.info(
+                        "Pendulum M8 heartbeat completed_cases=%d/%d "
+                        "outstanding_cases=%d checkpoint_rows=%d",
+                        accepted,
+                        len(future_cases),
+                        len(outstanding),
+                        len(rows),
+                    )
+                    continue
+                for future in finished:
+                    case = future_cases[future]
+                    try:
+                        accept(case, future.result())
+                    except Exception as error:
+                        accept(
+                            case,
+                            (
+                                _case_failure_row(
+                                    case, error, resolved, resolved_json, metadata
+                                ),
+                            ),
+                        )
+                    accepted += 1
+
+    frame = commit()
+    if failures:
+        examples = "; ".join(
+            f"K={case.K}/{case.heat_scaling}/T0={case.temperature:g}: {message}"
+            for case, message in failures[:3]
+        )
+        raise RuntimeError(
+            f"{len(failures)} Pendulum case(s) failed; raw failures were "
+            f"checkpointed. First failures: {examples}"
+        )
     return frame

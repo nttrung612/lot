@@ -11,3 +11,4 @@ outputs/figures/*
 !outputs/summaries/.gitkeep
 !outputs/figures/.gitkeep
 LOT.pdf
+tmp/
