@@ -11,7 +11,7 @@ import multiprocessing
 import os
 import tempfile
 from collections.abc import Mapping, Sequence
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -1128,8 +1128,9 @@ def run_ring_planning(
     def commit() -> None:
         write_results_atomic(rows, output)
 
+    cases = _ring_cases(resolved)
     pending: list[tuple[RingCase, frozenset[str]]] = []
-    for case in _ring_cases(resolved):
+    for case in cases:
         expected = _case_run_ids(case, resolved, resolved_json)
         if expected <= completed:
             continue
@@ -1148,6 +1149,15 @@ def run_ring_planning(
             ),
             reverse=True,
         )
+    LOGGER.info(
+        "ring planning start workers=%d total_cases=%d resumed_cases=%d "
+        "pending_cases=%d checkpoint_rows=%d",
+        workers,
+        len(cases),
+        len(cases) - len(pending),
+        len(pending),
+        len(rows),
+    )
     failures: list[tuple[RingCase, str]] = []
 
     def accept(case: RingCase, outcome: RingCaseOutcome) -> None:
@@ -1213,27 +1223,46 @@ def run_ring_planning(
                 ): case
                 for case, case_completed in pending
             }
-            for future in as_completed(future_cases):
-                case = future_cases[future]
-                try:
-                    accept(case, future.result())
-                except Exception as error:
-                    message = f"{type(error).__name__}: {error}"
-                    accept(
-                        case,
-                        RingCaseOutcome(
-                            (
-                                _case_failure_row(
-                                    case,
-                                    error,
-                                    resolved,
-                                    resolved_json,
-                                    metadata_json,
-                                ),
-                            ),
-                            message,
-                        ),
+            outstanding = set(future_cases)
+            accepted = 0
+            while outstanding:
+                finished, outstanding = wait(
+                    outstanding,
+                    timeout=30.0,
+                    return_when=FIRST_COMPLETED,
+                )
+                if not finished:
+                    LOGGER.info(
+                        "ring planning heartbeat completed_cases=%d/%d "
+                        "outstanding_cases=%d checkpoint_rows=%d",
+                        accepted,
+                        len(future_cases),
+                        len(outstanding),
+                        len(rows),
                     )
+                    continue
+                for future in finished:
+                    case = future_cases[future]
+                    try:
+                        accept(case, future.result())
+                    except Exception as error:
+                        message = f"{type(error).__name__}: {error}"
+                        accept(
+                            case,
+                            RingCaseOutcome(
+                                (
+                                    _case_failure_row(
+                                        case,
+                                        error,
+                                        resolved,
+                                        resolved_json,
+                                        metadata_json,
+                                    ),
+                                ),
+                                message,
+                            ),
+                        )
+                    accepted += 1
 
     if failures:
         examples = "; ".join(
