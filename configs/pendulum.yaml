@@ -3,10 +3,27 @@ seed: 0
 environment: Pendulum-v1
 K: [51, 101, 201, 401, 801]
 heat_scalings: [index_heat, physical_heat]
+diffusion_time:
+  index_heat: 2.0
+  physical_heat: 0.02
 gamma: 0.99
 reward_scale: 16.2736044
 temperature: [0.02, 0.05, 0.1]
 development_grid: [129, 129]
 validation_grid: [257, 257]
 reference_tolerance: 0.001
-
+reference_policy_statistic_tolerance: 0.01
+evaluation_reset_states: 100
+reference:
+  K: 101
+  heat_scaling: physical_heat
+  temperature: 0.05
+  bellman_tolerance: 1.0e-7
+  max_iterations: 5000
+  state_chunk_size: 256
+  anderson_depth: 5
+  progress_interval: 25
+  anchor_prior: uniform
+  require_grid_convergence: false
+raw_output: outputs/raw/pendulum_reference.parquet
+solution_output: outputs/raw/pendulum_reference_solution.npz

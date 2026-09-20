@@ -3,7 +3,7 @@
 Numerical experiments for **What Action Geometry Buys: A Design Space for
 Optimal-Transport Bellman Backups**.
 
-The repository currently implements milestones M0-M6: configuration loading,
+The repository currently implements milestones M0-M7: configuration loading,
 result validation, graph construction, exact and normalized finite-walk heat
 kernels, reusable Poisson-tail certificates, stable LOT backups, lazy local
 heat columns, operation accounting, and deterministic validation on all planned
@@ -12,8 +12,10 @@ the sharp-pruning/Poisson-truncation experiment with a Figure 2 draft, and the
 stochastic ring-control environment with dense target references and baseline
 planners, the end-to-end paired-seed ring study with Figure 3, and reward-free
 transition-geometry learning with reward transfer, deterministic propagation
-checks, a sample-threshold table, and a paper-ready figure. Later control
-studies are not yet implemented.
+checks, a sample-threshold table, and a paper-ready figure, plus an exact
+``Pendulum-v1`` discrete-torque wrapper and a development/validation-grid
+FullExactHeat fitted-value reference. Pendulum baselines and final figures are
+reserved for M8.
 
 ## Setup and checks
 
@@ -27,6 +29,7 @@ uv run python scripts/run_kernel_map.py --config configs/kernel_map.yaml
 uv run python scripts/run_pruning.py --config configs/pruning.yaml
 uv run python scripts/run_ring_planning.py --config configs/ring_planning.yaml
 uv run python scripts/run_geometry_learning.py --config configs/geometry_learning.yaml
+uv run python scripts/run_pendulum.py --config configs/pendulum.yaml
 uv run python scripts/make_all_figures.py
 ```
 
@@ -90,3 +93,21 @@ results. Experiment raw, summary, and figure artifacts belong in `outputs/raw/`,
   reward goal at a given paired seed and sample count, and the anchor priors
   are frozen to the configured reference goal rather than changing with the
   reward task.
+- M7 mirrors the official deterministic ``Pendulum-v1`` equations, removes
+  only the episode time limit for discounted fixed-point computation, and
+  keeps raw rewards separate from rewards divided by ``16.2736044``. Its
+  periodic-angle fitted value iteration compares the 129x129 development
+  grid against 257x257, stores both converged value tables and the observed
+  discretization error, and applies the exact path heat semigroup with a
+  nonnegative, tail-stable dense reference backend. Both index-scale and
+  physical-resolution heat are explicit; the latter scales path edge weights
+  by ``1 / delta_u^2``.
+
+The default M7 reference is strict about terminology: both fitted Bellman
+fixed points must converge, while `reference_accepted` is set only when the
+development-to-validation value and policy-statistic tolerances also pass.
+The initial 129x129/257x257 run does not pass the declared `1e-3` normalized
+value tolerance, so the refined artifact is retained with
+`reference_accepted=false` as required by the experiment plan. Set
+`reference.require_grid_convergence=true` to make that condition a hard CLI
+failure when testing a finer reference grid.

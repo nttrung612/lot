@@ -610,7 +610,7 @@ Appendix:
 - [x] M4: Ring environment, dense references, and baseline planners implemented.
 - [x] M5: End-to-end synthetic planning results complete.
 - [x] M6: Reward-free learned-geometry experiment complete.
-- [ ] M7: Pendulum wrapper and converged reference solution complete.
+- [x] M7: Pendulum wrapper and converged reference solution complete.
 - [ ] M8: Pendulum baselines and final figures complete.
 - [ ] M9: Effective-resistance appendix figure complete.
 - [ ] M10: Reproduction command reruns all paper artifacts from clean outputs.
