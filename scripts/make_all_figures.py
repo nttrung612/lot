@@ -1,4 +1,4 @@
-"""Regenerate implemented paper figures from summaries only."""
+"""Regenerate implemented paper figures from stored result artifacts only."""
 
 from __future__ import annotations
 
@@ -24,7 +24,9 @@ from lot_experiments.plotting.planning import plot_ring_planning_figure
 from lot_experiments.plotting.pendulum import plot_pendulum_figure
 from lot_experiments.pendulum_experiment import resolve_pendulum_experiment_config
 from lot_experiments.plotting.pruning import plot_pruning_figure
+from lot_experiments.plotting.resistance import plot_resistance_figure
 from lot_experiments.pruning_experiment import resolve_pruning_config
+from lot_experiments.resistance import resolve_resistance_config
 from lot_experiments.ring_planning import resolve_ring_planning_config
 
 
@@ -44,6 +46,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--pendulum-config", type=Path, default=Path("configs/pendulum.yaml")
+    )
+    parser.add_argument(
+        "--resistance-config", type=Path, default=Path("configs/resistance.yaml")
     )
     arguments = parser.parse_args()
     resolved = resolve_kernel_map_config(load_config(arguments.kernel_map_config))
@@ -91,6 +96,14 @@ def main() -> None:
         pendulum,
         png_path=pendulum["figure_png"],
         pdf_path=pendulum["figure_pdf"],
+    )
+    resistance = resolve_resistance_config(load_config(arguments.resistance_config))
+    resistance_raw = pd.read_parquet(resistance["raw_output"])
+    plot_resistance_figure(
+        resistance_raw,
+        resistance,
+        png_path=resistance["figure_png"],
+        pdf_path=resistance["figure_pdf"],
     )
 
 

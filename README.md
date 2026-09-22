@@ -3,7 +3,7 @@
 Numerical experiments for **What Action Geometry Buys: A Design Space for
 Optimal-Transport Bellman Backups**.
 
-The repository currently implements milestones M0-M8: configuration loading,
+The repository currently implements milestones M0-M9: configuration loading,
 result validation, graph construction, exact and normalized finite-walk heat
 kernels, reusable Poisson-tail certificates, stable LOT backups, lazy local
 heat columns, operation accounting, and deterministic validation on all planned
@@ -15,7 +15,10 @@ transition-geometry learning with reward transfer, deterministic propagation
 checks, a sample-threshold table, and a paper-ready figure, plus an exact
 ``Pendulum-v1`` discrete-torque wrapper and a development/validation-grid
 FullExactHeat fitted-value reference, all planned Pendulum baselines, radius
-ablations, behavioral evaluation, checkpointed execution, and Figure 4.
+ablations, behavioral evaluation, checkpointed execution, and Figure 4. The
+appendix effective-resistance study computes the value-dependent LOT transport
+co-occurrence graph and verifies policy-space curvature by balanced entropic-OT
+finite differences.
 
 ## Setup and checks
 
@@ -32,6 +35,7 @@ uv run python scripts/run_geometry_learning.py --config configs/geometry_learnin
 uv run python scripts/run_pendulum_reference.py --config configs/pendulum_reference.yaml
 uv run python scripts/run_pendulum.py --config configs/pendulum_smoke.yaml
 uv run python scripts/run_pendulum.py --config configs/pendulum.yaml
+uv run python scripts/run_resistance.py --config configs/resistance.yaml
 uv run python scripts/make_all_figures.py
 ```
 
@@ -138,6 +142,14 @@ failure when testing a finer reference grid.
   the primary radius with action resolution and therefore does not claim
   action-cardinality-independent cost. Results checkpoint atomically after
   each `(K, heat_scaling, temperature)` case and resume only matching configs.
+
+- M9 keeps the weak-bridge input action graph distinct from the induced
+  co-occurrence graph `A_Q`. It evaluates `Omega(pi)` with both transport
+  marginals fixed, checks `A_Q 1 = pi_Q` and `rank(L_Q) = K - 1`, and verifies
+  that central finite differences converge to `T0 R_Q(i,k)` for within-cluster,
+  bridge-endpoint, and cross-cluster transfers across several `Q` vectors. This
+  is an interpretation of an exact local identity, not evidence of an
+  optimization-rate improvement.
 
 The smoke configuration runs in seconds to a few minutes depending on the
 machine. A measured single-core 129x129 benchmark at `K=51` took 18.4 seconds

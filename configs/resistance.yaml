@@ -1,6 +1,39 @@
 experiment: resistance
 seed: 0
-graph_family: two_cluster_weak_bridge
-temperature: 0.1
-finite_difference_steps: [0.1, 0.03, 0.01, 0.003, 0.001]
-
+graph:
+  family: two_cluster_weak_bridge
+  cluster_size: 4
+  within_weight: 1.0
+  bridge_weight: 0.08
+cost:
+  kind: input_effective_resistance
+  scale: 0.2
+regularization:
+  tau: 0.1
+  lambda_: 1.0
+candidate_prior: uniform
+anchor_distribution: uniform
+q_vectors:
+  balanced: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  left_favored: [0.08, 0.04, 0.02, 0.0, -0.02, -0.04, -0.06, -0.08]
+  bridge_favored: [0.0, 0.0, 0.02, 0.08, 0.08, 0.02, 0.0, 0.0]
+pairs:
+  within_cluster:
+    actions: [0, 1]
+    type: within_cluster
+  bridge_endpoints:
+    actions: [3, 4]
+    type: bridge
+  cross_cluster:
+    actions: [0, 7]
+    type: cross_cluster
+finite_difference_steps: [0.01, 0.003, 0.001, 0.0003, 0.0001]
+sinkhorn:
+  tolerance: 3.0e-15
+  max_iterations: 100000
+numerical_tolerance: 1.0e-6
+visualization_q: bridge_favored
+raw_output: outputs/raw/resistance.parquet
+summary_output: outputs/summaries/resistance.csv
+figure_png: outputs/figures/effective_resistance.png
+figure_pdf: outputs/figures/effective_resistance.pdf
