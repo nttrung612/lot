@@ -119,7 +119,6 @@ def resolve_geometry_learning_config(config: Mapping[str, Any]) -> dict[str, Any
             "summary_output": "outputs/summaries/geometry_learning.csv",
             "table_output": "outputs/summaries/table1_geometry_learning.csv",
             "figure_png": "outputs/figures/geometry_learning.png",
-            "figure_pdf": "outputs/figures/geometry_learning.pdf",
         },
     )
     if resolved["experiment"] != "geometry_learning":

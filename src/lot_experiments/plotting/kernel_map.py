@@ -85,8 +85,7 @@ def plot_kernel_map_figure(
     config: Mapping[str, Any],
     *,
     png_path: str | Path,
-    pdf_path: str | Path,
-) -> tuple[Path, Path]:
+) -> Path:
     """Create Figure 1 from an existing summary; never rerun simulation."""
 
     if summary.empty:
@@ -215,7 +214,5 @@ def plot_kernel_map_figure(
     )
     figure.tight_layout(rect=(0.0, 0.045, 1.0, 0.94))
     png = _atomic_save(figure, png_path)
-    pdf = _atomic_save(figure, pdf_path)
     plt.close(figure)
-    return png, pdf
-
+    return png

@@ -40,4 +40,3 @@ figure:
 raw_output: outputs/raw/pendulum_smoke.parquet
 summary_output: outputs/summaries/pendulum_smoke.csv
 figure_png: outputs/figures/figure4_pendulum_smoke.png
-figure_pdf: outputs/figures/figure4_pendulum_smoke.pdf

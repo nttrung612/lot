@@ -69,7 +69,6 @@ def test_small_m5_run_resumes_aggregates_and_plots(tmp_path):
             "raw_output": str(tmp_path / "raw.parquet"),
             "summary_output": str(tmp_path / "summary.csv"),
             "figure_png": str(tmp_path / "figure.png"),
-            "figure_pdf": str(tmp_path / "figure.pdf"),
             "figure": {"temperature": 0.2, "poisson_mean": 1.0, "epsilon": 0.3},
         }
     )
@@ -120,14 +119,12 @@ def test_small_m5_run_resumes_aggregates_and_plots(tmp_path):
         "absolute_value_error_ci_high"
     ]
     write_ring_summary_atomic(summary, config["summary_output"])
-    png, pdf = plot_ring_planning_figure(
+    png = plot_ring_planning_figure(
         summary,
         config,
         png_path=config["figure_png"],
-        pdf_path=config["figure_pdf"],
     )
     assert Path(png).stat().st_size > 0
-    assert Path(pdf).stat().st_size > 0
 
 
 def test_parallel_cases_match_serial_results_and_resume(tmp_path):

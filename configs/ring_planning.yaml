@@ -57,7 +57,6 @@ bootstrap_repetitions: 2000
 raw_output: outputs/raw/ring_planning.parquet
 summary_output: outputs/summaries/ring_planning.csv
 figure_png: outputs/figures/figure3_ring_planning.png
-figure_pdf: outputs/figures/figure3_ring_planning.pdf
 
 figure:
   temperature: 0.1

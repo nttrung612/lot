@@ -31,7 +31,6 @@ def _small_config(tmp_path: Path):
             "summary_output": str(tmp_path / "summary.csv"),
             "table_output": str(tmp_path / "table.csv"),
             "figure_png": str(tmp_path / "figure.png"),
-            "figure_pdf": str(tmp_path / "figure.pdf"),
         }
     )
 
@@ -78,15 +77,13 @@ def test_small_m6_run_resumes_reuses_geometry_and_checks_envelope(tmp_path):
     assert len(table) == 2 * len(config["value_error_thresholds"])
     write_geometry_summary_atomic(summary, config["summary_output"])
     write_geometry_table_atomic(table, config["table_output"])
-    png, pdf = plot_geometry_learning_figure(
-        summary,
+    png = plot_geometry_learning_figure(
+        second,
         table,
         config,
         png_path=config["figure_png"],
-        pdf_path=config["figure_pdf"],
     )
     assert Path(png).stat().st_size > 0
-    assert Path(pdf).stat().st_size > 0
 
 
 def test_geometry_error_is_reward_independent_within_a_frozen_batch(tmp_path):

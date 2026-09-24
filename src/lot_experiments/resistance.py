@@ -388,7 +388,6 @@ def resolve_resistance_config(config: Mapping[str, Any]) -> dict[str, Any]:
             "raw_output": "outputs/raw/resistance.parquet",
             "summary_output": "outputs/summaries/resistance.csv",
             "figure_png": "outputs/figures/effective_resistance.png",
-            "figure_pdf": "outputs/figures/effective_resistance.pdf",
         },
     )
     if supplied_q_vectors is not None:

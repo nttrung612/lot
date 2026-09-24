@@ -45,11 +45,10 @@ def main() -> None:
     write_geometry_summary_atomic(summary, resolved["summary_output"])
     write_geometry_table_atomic(table, resolved["table_output"])
     plot_geometry_learning_figure(
-        summary,
+        raw,
         table,
         resolved,
         png_path=resolved["figure_png"],
-        pdf_path=resolved["figure_pdf"],
     )
 
 

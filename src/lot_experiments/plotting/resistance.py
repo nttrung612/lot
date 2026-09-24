@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch, Rectangle
 
 from lot_experiments.config import config_json
 from lot_experiments.plotting.common import apply_paper_style
@@ -94,18 +95,20 @@ def _draw_graph(
                 zorder=1,
             )
     if node_values is None:
-        colors = np.full(K, 0.5)
+        colors = "#d9dee7"
         sizes = np.full(K, 72.0)
+        edgecolor = "#3f4854"
     else:
         colors = np.asarray(node_values, dtype=float)
         sizes = 45.0 + 360.0 * colors
+        edgecolor = "white"
     axis.scatter(
         positions[:, 0],
         positions[:, 1],
         c=colors,
-        cmap="viridis",
+        cmap=None if node_values is None else "viridis",
         s=sizes,
-        edgecolor="white",
+        edgecolor=edgecolor,
         linewidth=0.6,
         zorder=2,
     )
@@ -136,8 +139,7 @@ def plot_resistance_figure(
     config: Mapping[str, Any],
     *,
     png_path: str | Path,
-    pdf_path: str | Path,
-) -> tuple[Path, Path]:
+) -> Path:
     """Plot M9 entirely from stored run-level results."""
 
     frame = validate_results(raw)
@@ -191,10 +193,35 @@ def plot_resistance_figure(
     policy = nodes["policy_mass"].to_numpy(dtype=float)
 
     apply_paper_style()
-    figure, axes = plt.subplots(1, 4, figsize=(7.2, 2.35))
-    _draw_graph(axes[0], input_matrix, positions)
-    axes[0].set_title("A  Input action graph")
-    axes[0].text(
+    figure = plt.figure(figsize=(7.2, 4.65))
+    outer = figure.add_gridspec(
+        2,
+        1,
+        height_ratios=(1.0, 1.48),
+        hspace=0.42,
+    )
+    top = outer[0].subgridspec(
+        1,
+        3,
+        width_ratios=(1.08, 1.08, 0.90),
+        wspace=0.34,
+    )
+    graph_axis = figure.add_subplot(top[0, 0])
+    cooccurrence_axis = figure.add_subplot(top[0, 1])
+    resistance_axis = figure.add_subplot(top[0, 2])
+    bottom = outer[1].subgridspec(
+        1,
+        2,
+        width_ratios=(4.9, 1.45),
+        wspace=0.08,
+    )
+    curvature_axis = figure.add_subplot(bottom[0, 0])
+    legend_axis = figure.add_subplot(bottom[0, 1])
+    legend_axis.axis("off")
+
+    _draw_graph(graph_axis, input_matrix, positions)
+    graph_axis.set_title("A  Input action graph", loc="left", fontweight="bold")
+    graph_axis.text(
         0.0,
         -1.02,
         f"weak bridge weight={float(graph_config['bridge_weight']):g}",
@@ -202,58 +229,157 @@ def plot_resistance_figure(
         fontsize=6.5,
     )
 
-    _draw_graph(axes[1], cooccurrence, positions, node_values=policy, complete=True)
-    axes[1].set_title(f"B  Induced $A_Q$\n({q_name.replace('_', ' ')})")
-    axes[1].text(0.0, -1.02, "node area = policy mass", ha="center", fontsize=6.5)
+    _draw_graph(
+        cooccurrence_axis,
+        cooccurrence,
+        positions,
+        node_values=policy,
+        complete=True,
+    )
+    cooccurrence_axis.set_title(
+        f"B  Induced $A_Q$  ({q_name.replace('_', ' ')})",
+        loc="left",
+        fontweight="bold",
+    )
+    cooccurrence_axis.text(
+        0.0,
+        -1.02,
+        "node size and color = $\\pi_Q$",
+        ha="center",
+        fontsize=6.5,
+    )
 
-    image = axes[2].imshow(resistance, cmap="magma", interpolation="nearest")
-    axes[2].set_title("C  $R_Q(i,k)$")
-    axes[2].set_xlabel("action $k$")
-    axes[2].set_ylabel("action $i$")
-    axes[2].set_xticks(range(K))
-    axes[2].set_yticks(range(K))
-    colorbar = figure.colorbar(image, ax=axes[2], fraction=0.046, pad=0.04)
+    image = resistance_axis.imshow(resistance, cmap="magma", interpolation="nearest")
+    resistance_axis.set_title(
+        "C  Effective resistance $R_Q(i,k)$",
+        loc="left",
+        fontweight="bold",
+    )
+    resistance_axis.set_xlabel("action $k$")
+    resistance_axis.set_ylabel("action $i$")
+    resistance_axis.set_xticks(range(K))
+    resistance_axis.set_yticks(range(K))
+    for specification in config["pairs"].values():
+        action_i, action_k = map(int, specification["actions"])
+        color = PAIR_COLORS.get(str(specification["type"]), "#333333")
+        for row, column in ((action_i, action_k), (action_k, action_i)):
+            resistance_axis.add_patch(
+                Rectangle(
+                    (column - 0.46, row - 0.46),
+                    0.92,
+                    0.92,
+                    fill=False,
+                    edgecolor=color,
+                    linewidth=1.25,
+                )
+            )
+    colorbar = figure.colorbar(
+        image,
+        ax=resistance_axis,
+        fraction=0.046,
+        pad=0.04,
+        label="resistance",
+    )
     colorbar.ax.tick_params(labelsize=6)
 
     curvature = frame.loc[frame["record_type"] == "curvature"].copy()
-    markers = {"balanced": "o", "left_favored": "s", "bridge_favored": "^"}
+    q_names = [str(name) for name in config["q_vectors"]]
+    marker_cycle = ("o", "s", "^", "D", "v", "P")
+    markers = {
+        name: marker_cycle[index % len(marker_cycle)]
+        for index, name in enumerate(q_names)
+    }
+    curvature["curvature_ratio"] = (
+        curvature["finite_difference_curvature"]
+        / curvature["theoretical_curvature"]
+    )
+    curvature["signed_deviation_milli"] = 1.0e3 * (
+        curvature["curvature_ratio"] - 1.0
+    )
     for (pair_type, current_q), group in curvature.groupby(
         ["pair_type", "q_name"], sort=True
     ):
         group = group.sort_values("step_size")
-        axes[3].plot(
+        curvature_axis.plot(
             group["step_size"],
-            group["relative_curvature_error"],
+            group["signed_deviation_milli"],
             color=PAIR_COLORS.get(str(pair_type), "#333333"),
             marker=markers.get(str(current_q), "o"),
             linestyle="-",
-            alpha=0.78,
+            markerfacecolor="white",
+            markeredgewidth=0.9,
+            linewidth=1.25,
+            markersize=4.3,
+            alpha=0.9,
         )
-    positive = curvature.loc[
-        (curvature["step_size"] > 0.0) & (curvature["relative_curvature_error"] > 0.0)
-    ]
-    if not positive.empty:
-        steps = np.sort(positive["step_size"].unique())
-        reference = float(positive["relative_curvature_error"].median()) * (
-            steps / float(np.median(positive["step_size"]))
-        ) ** 2
-        axes[3].plot(steps, reference, "k--", linewidth=1.0, label="$O(h^2)$")
-    axes[3].set_xscale("log")
-    axes[3].set_yscale("log")
-    axes[3].set_xlabel("finite-difference step $h$")
-    axes[3].set_ylabel("relative error")
-    axes[3].set_title("D  Curvature convergence")
+    steps = np.sort(curvature["step_size"].unique())
+    largest_step = float(steps[-1])
+    largest_error = float(
+        curvature.loc[
+            np.isclose(curvature["step_size"], largest_step),
+            "signed_deviation_milli",
+        ].abs().max()
+    )
+    envelope = largest_error * (steps / largest_step) ** 2
+    curvature_axis.fill_between(
+        steps,
+        -envelope,
+        envelope,
+        color="#9ca3af",
+        alpha=0.18,
+        linewidth=0.0,
+        zorder=0,
+    )
+    curvature_axis.plot(
+        steps,
+        envelope,
+        color="#6b7280",
+        linestyle="--",
+        linewidth=0.9,
+        zorder=0,
+    )
+    curvature_axis.plot(
+        steps,
+        -envelope,
+        color="#6b7280",
+        linestyle="--",
+        linewidth=0.9,
+        zorder=0,
+    )
+    curvature_axis.axhline(0.0, color="black", linewidth=1.0, zorder=1)
+    curvature_axis.set_xscale("log")
+    curvature_axis.set_xlabel("finite-difference step $h$  ($\\leftarrow$ smaller $h$)")
+    curvature_axis.set_ylabel("relative deviation from $T_0R_Q$  ($10^{-3}$)")
+    curvature_axis.set_title(
+        "D  Finite differences recover the effective-resistance curvature",
+        loc="left",
+        fontweight="bold",
+    )
+    curvature_axis.text(
+        float(steps[0]),
+        0.04 * max(1.0, largest_error),
+        "exact identity",
+        fontsize=6.5,
+        ha="left",
+        va="bottom",
+    )
+    curvature_axis.margins(x=0.03, y=0.12)
+
     pair_handles = [
         Line2D([0], [0], color=color, label=PAIR_LABELS[pair_type])
         for pair_type, color in PAIR_COLORS.items()
     ]
-    pair_handles.append(
-        Line2D([0], [0], color="black", linestyle="--", label="$O(h^2)$")
+    pair_legend = legend_axis.legend(
+        handles=pair_handles,
+        title="Transfer pair",
+        frameon=False,
+        fontsize=6.5,
+        title_fontsize=7,
+        loc="upper left",
+        bbox_to_anchor=(0.0, 1.0),
+        borderaxespad=0.0,
     )
-    pair_legend = axes[3].legend(
-        handles=pair_handles, frameon=False, fontsize=5.2, loc="upper left"
-    )
-    axes[3].add_artist(pair_legend)
+    legend_axis.add_artist(pair_legend)
     q_handles = [
         Line2D(
             [0],
@@ -265,28 +391,64 @@ def plot_resistance_figure(
         )
         for q_name, marker in markers.items()
     ]
-    axes[3].legend(
+    q_legend = legend_axis.legend(
         handles=q_handles,
+        title="Value profile $Q$",
         frameon=False,
-        fontsize=4.7,
-        loc="lower right",
+        fontsize=6.5,
+        title_fontsize=7,
+        loc="upper left",
+        bbox_to_anchor=(0.0, 0.54),
+        borderaxespad=0.0,
         handletextpad=0.3,
+    )
+    legend_axis.add_artist(q_legend)
+    legend_axis.legend(
+        handles=[
+            Patch(
+                facecolor="#9ca3af",
+                edgecolor="#6b7280",
+                alpha=0.25,
+                label="$O(h^2)$ envelope",
+            )
+        ],
+        frameon=False,
+        fontsize=6.5,
+        loc="upper left",
+        bbox_to_anchor=(0.0, 0.22),
+        borderaxespad=0.0,
+    )
+
+    finest_step = float(curvature["step_size"].min())
+    finest_error = float(
+        curvature.loc[
+            np.isclose(curvature["step_size"], finest_step),
+            "relative_curvature_error",
+        ].max()
+    )
+    legend_axis.text(
+        0.0,
+        0.0,
+        f"Worst case at $h={finest_step:g}$:\nrelative error = {finest_error:.1e}",
+        transform=legend_axis.transAxes,
+        fontsize=6.5,
+        ha="left",
+        va="bottom",
     )
 
     figure.text(
-        0.5,
-        -0.01,
+        0.01,
+        0.012,
         (
-            "Input geometry and the Q-dependent co-occurrence graph are distinct. "
-            "Panel D verifies the exact local identity $d^2\\Omega=T_0 R_Q$; "
-            "it does not assert an optimization improvement."
+            "The input graph and the $Q$-dependent co-occurrence graph are distinct. "
+            "Colored boxes in C identify the transfer pairs used in D. "
+            "This verifies a local identity; it does not claim an optimization improvement."
         ),
-        ha="center",
-        va="top",
+        ha="left",
+        va="bottom",
         fontsize=6.7,
     )
-    figure.tight_layout(rect=(0.0, 0.08, 1.0, 1.0), w_pad=1.0)
+    figure.subplots_adjust(left=0.075, right=0.985, top=0.94, bottom=0.125)
     png = _atomic_save(figure, png_path)
-    pdf = _atomic_save(figure, pdf_path)
     plt.close(figure)
-    return png, pdf
+    return png

@@ -12,7 +12,6 @@ dense_batch_size: 128
 raw_output: outputs/raw/kernel_map.parquet
 summary_output: outputs/summaries/kernel_map.csv
 figure_png: outputs/figures/figure1_kernel_map.png
-figure_pdf: outputs/figures/figure1_kernel_map.pdf
 figure:
   alpha: 0.01
   poisson_mean: 2.0

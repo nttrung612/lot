@@ -64,7 +64,6 @@ def test_small_m3_run_is_resumable_certified_and_plot_only(tmp_path):
             "raw_output": str(tmp_path / "raw.parquet"),
             "summary_output": str(tmp_path / "summary.csv"),
             "figure_png": str(tmp_path / "figure.png"),
-            "figure_pdf": str(tmp_path / "figure.pdf"),
             "figure": {
                 "typical_span_over_temperature": 4.0,
                 "truncation_graph_family": "cycle",
@@ -104,11 +103,9 @@ def test_small_m3_run_is_resumable_certified_and_plot_only(tmp_path):
 
     summary = summarize_pruning(second, resolved_config=config)
     write_pruning_summary_atomic(summary, config["summary_output"])
-    png, pdf = plot_pruning_figure(
+    png = plot_pruning_figure(
         pd.read_csv(config["summary_output"]),
         config,
         png_path=config["figure_png"],
-        pdf_path=config["figure_pdf"],
     )
     assert Path(png).stat().st_size > 0
-    assert Path(pdf).stat().st_size > 0

@@ -72,7 +72,6 @@ def test_small_kernel_map_run_resumes_and_plots_without_rerunning(tmp_path):
             "raw_output": str(tmp_path / "raw.parquet"),
             "summary_output": str(tmp_path / "summary.csv"),
             "figure_png": str(tmp_path / "figure.png"),
-            "figure_pdf": str(tmp_path / "figure.pdf"),
             "figure": {
                 "alpha": 0.1,
                 "poisson_mean": 0.5,
@@ -96,12 +95,9 @@ def test_small_kernel_map_run_resumes_and_plots_without_rerunning(tmp_path):
     )
     summary = summarize_kernel_map(second, resolved_config=config)
     write_summary_atomic(summary, config["summary_output"])
-    png, pdf = plot_kernel_map_figure(
+    png = plot_kernel_map_figure(
         pd.read_csv(config["summary_output"]),
         config,
         png_path=config["figure_png"],
-        pdf_path=config["figure_pdf"],
     )
     assert Path(png).stat().st_size > 0
-    assert Path(pdf).stat().st_size > 0
-

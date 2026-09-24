@@ -125,7 +125,6 @@ def resolve_pruning_config(config: Mapping[str, Any]) -> dict[str, Any]:
         "raw_output": "outputs/raw/pruning.parquet",
         "summary_output": "outputs/summaries/pruning.csv",
         "figure_png": "outputs/figures/figure2_pruning.png",
-        "figure_pdf": "outputs/figures/figure2_pruning.pdf",
         "worst_case": {
             "graph": {"family": "cycle", "K": 41},
             "poisson_mean": 2.0,

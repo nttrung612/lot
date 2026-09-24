@@ -37,7 +37,6 @@ def _small_config(tmp_path):
         "raw_output": str(tmp_path / "raw.parquet"),
         "summary_output": str(tmp_path / "summary.csv"),
         "figure_png": str(tmp_path / "figure.png"),
-        "figure_pdf": str(tmp_path / "figure.pdf"),
     }
 
 
@@ -64,13 +63,12 @@ def test_small_pendulum_experiment_preserves_targets_and_local_cost(tmp_path):
     resumed = run_pendulum_experiment(config)
     assert resumed["run_id"].is_unique
     assert set(resumed["run_id"]) == set(rows["run_id"])
-    png, pdf = plot_pendulum_figure(
+    png = plot_pendulum_figure(
         rows,
         config,
         png_path=config["figure_png"],
-        pdf_path=config["figure_pdf"],
     )
-    assert png.exists() and pdf.exists()
+    assert png.exists()
 
 
 def test_parallel_pendulum_matches_serial_and_resumes(tmp_path):
@@ -92,7 +90,6 @@ def test_parallel_pendulum_matches_serial_and_resumes(tmp_path):
             "raw_output": str(tmp_path / "parallel" / "raw.parquet"),
             "summary_output": str(tmp_path / "parallel" / "summary.csv"),
             "figure_png": str(tmp_path / "parallel" / "figure.png"),
-            "figure_pdf": str(tmp_path / "parallel" / "figure.pdf"),
         }
     )
 
@@ -128,13 +125,12 @@ def test_parallel_pendulum_matches_serial_and_resumes(tmp_path):
         rtol=1e-13,
         atol=1e-13,
     )
-    png, pdf = plot_pendulum_figure(
+    png = plot_pendulum_figure(
         parallel,
         parallel_config,
         png_path=parallel_config["figure_png"],
-        pdf_path=parallel_config["figure_pdf"],
     )
-    assert png.exists() and pdf.exists()
+    assert png.exists()
 
 
 @pytest.mark.parametrize("workers", [0, -1, 1.5, True])

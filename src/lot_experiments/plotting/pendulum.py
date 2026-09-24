@@ -71,8 +71,7 @@ def plot_pendulum_figure(
     config: Mapping[str, Any],
     *,
     png_path: str | Path,
-    pdf_path: str | Path,
-) -> tuple[Path, Path]:
+) -> Path:
     required = {
         "method",
         "target",
@@ -257,6 +256,5 @@ def plot_pendulum_figure(
     )
     figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.86))
     png = _atomic_save(figure, png_path)
-    pdf = _atomic_save(figure, pdf_path)
     plt.close(figure)
-    return png, pdf
+    return png

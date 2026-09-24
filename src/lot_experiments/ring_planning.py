@@ -176,7 +176,6 @@ def resolve_ring_planning_config(config: Mapping[str, Any]) -> dict[str, Any]:
             "raw_output": "outputs/raw/ring_planning.parquet",
             "summary_output": "outputs/summaries/ring_planning.csv",
             "figure_png": "outputs/figures/figure3_ring_planning.png",
-            "figure_pdf": "outputs/figures/figure3_ring_planning.pdf",
             "figure": {"temperature": 0.1, "poisson_mean": 2.0, "epsilon": 0.1},
         },
     )

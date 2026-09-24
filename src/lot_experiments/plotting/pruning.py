@@ -87,8 +87,7 @@ def plot_pruning_figure(
     config: Mapping[str, Any],
     *,
     png_path: str | Path,
-    pdf_path: str | Path,
-) -> tuple[Path, Path]:
+) -> Path:
     """Create Figure 2 from the M3 summary without rerunning experiments."""
 
     required = {
@@ -138,29 +137,57 @@ def plot_pruning_figure(
     figure, axes = plt.subplots(2, 2, figsize=(7.2, 5.6))
 
     worst = summary.loc[summary["experiment_part"] == "worst_case"]
-    axes[0, 0].scatter(
-        worst["theoretical_pruning_error_median"],
-        worst["observed_pruning_error_median"],
-        c=worst["span_over_temperature"],
-        cmap="viridis",
-        s=23,
-        zorder=3,
-    )
-    maximum = float(
-        np.nanmax(
-            np.concatenate(
-                [
-                    worst["theoretical_pruning_error_median"].to_numpy(float),
-                    worst["observed_pruning_error_median"].to_numpy(float),
-                ]
-            )
+    worst_axis = axes[0, 0]
+    observed = worst["observed_pruning_error_median"].to_numpy(float)
+    predicted = worst["theoretical_pruning_error_median"].to_numpy(float)
+    maximum_gap = float(np.max(np.abs(observed - predicted)))
+    colors = ("#0072B2", "#009E73", "#D55E00", "#CC79A7")
+    markers = ("o", "s", "D", "^")
+    temperature = float(config["temperature"])
+    for index, ratio in enumerate(sorted(worst["span_over_temperature"].unique())):
+        selected = worst.loc[_near(worst["span_over_temperature"], ratio)].sort_values(
+            "omitted_mass_median"
         )
+        alpha = selected["omitted_mass_median"].to_numpy(float)
+        alpha_grid = np.geomspace(
+            alpha.min() * 0.85, min(alpha.max() * 1.15, 0.999), 160
+        )
+        color = colors[index % len(colors)]
+        worst_axis.plot(
+            alpha_grid,
+            [
+                sharp_pruning_error(value, float(ratio) * temperature, temperature)
+                for value in alpha_grid
+            ],
+            color=color,
+            label=rf"$S/T_0={ratio:g}$",
+        )
+        worst_axis.scatter(
+            alpha,
+            selected["observed_pruning_error_median"],
+            marker=markers[index % len(markers)],
+            s=28,
+            facecolors="white",
+            edgecolors=color,
+            linewidths=1.1,
+            zorder=3,
+        )
+    worst_axis.set_xscale("log")
+    worst_axis.set_yscale("log")
+    worst_axis.set_xlabel(r"Actual omitted heat mass, $\alpha$")
+    worst_axis.set_ylabel("One-backup pruning error")
+    worst_axis.set_title("A  Sharp bound across mass and span")
+    worst_axis.legend(frameon=False, fontsize=6.5, ncol=2, loc="upper left")
+    worst_axis.text(
+        0.97,
+        0.04,
+        f"Markers: measured; lines: formula\nmax absolute gap = {maximum_gap:.1e}",
+        transform=worst_axis.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=6.5,
+        bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.85},
     )
-    axes[0, 0].plot([0.0, maximum], [0.0, maximum], "k--", label="Identity")
-    axes[0, 0].set_xlabel("Sharp formula")
-    axes[0, 0].set_ylabel("Measured pruning error")
-    axes[0, 0].set_title("A  Adversarial construction")
-    axes[0, 0].legend(frameon=False)
 
     typical = summary.loc[
         (summary["experiment_part"] == "typical")
@@ -271,6 +298,6 @@ def plot_pruning_figure(
     )
     figure.tight_layout(rect=(0.0, 0.04, 1.0, 1.0))
     png = _atomic_save(figure, png_path)
-    pdf = _atomic_save(figure, pdf_path)
+    _atomic_save(figure, Path(png_path).with_suffix(".pdf"))
     plt.close(figure)
-    return png, pdf
+    return png

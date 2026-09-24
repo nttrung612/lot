@@ -40,7 +40,6 @@ def main() -> None:
         summary,
         resolved,
         png_path=resolved["figure_png"],
-        pdf_path=resolved["figure_pdf"],
     )
 
 

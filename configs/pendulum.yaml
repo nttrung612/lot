@@ -77,4 +77,3 @@ figure:
   temperature: 0.05
 summary_output: outputs/summaries/pendulum.csv
 figure_png: outputs/figures/figure4_pendulum.png
-figure_pdf: outputs/figures/figure4_pendulum.pdf

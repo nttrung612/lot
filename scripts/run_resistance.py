@@ -44,7 +44,6 @@ def main() -> None:
         raw,
         resolved,
         png_path=resolved["figure_png"],
-        pdf_path=resolved["figure_pdf"],
     )
 
 

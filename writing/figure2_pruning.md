@@ -464,7 +464,7 @@ For each graph and $\theta$, the experiment first solves the FullExactHeat fixed
 
 ### 8.1. Panel A — Adversarial construction
 
-Panel A plots measured pruning error against the sharp formula for:
+Panel A plots one-backup pruning error against the actual omitted heat mass. A separate color and marker represent each value-span ratio; solid curves show the sharp formula and hollow markers show measured errors for:
 
 $$
 6\text{ mass budgets}
@@ -473,7 +473,7 @@ $$
 =24\text{ cases}.
 $$
 
-Every point lies on the identity line. The maximum absolute formula gap in the raw output is
+The markers lie on their corresponding formula curves. The panel annotates the maximum absolute formula gap in the raw output:
 
 $$
 1.11\times10^{-16}.
@@ -702,7 +702,7 @@ The end-to-end action-evaluation and oracle-call claims are tested by the synthe
 
 ## 15. Proposed Figure 2 caption
 
-> **Figure 2: Sharp pruning and propagation of local heat approximation error.** (A) The adversarial construction places value 0 on retained actions and value $S$ on omitted actions. Measured Exact Heat pruning error lies on the identity line against the sharp formula for six mass budgets and $S/T_0\in\{1,2,4,8\}$. (B) For smooth values at $S/T_0=4$, top-heat-weight and graph-ball subsets have much smaller median error than equal-cardinality random and farthest subsets; all observed errors remain below the worst-case certificate. (C) On a 25-action cycle with $\theta=2$, normalized Poisson-head kernel error, one-backup error, and fixed-point value error decay with truncation radius and remain below their respective bounds. (D) The same errors plotted against maximum graph-ball size expose the accuracy–local-action tradeoff. Panels A–B prune unnormalized Exact Heat weights and approximate the same Exact Heat target. Panels C–D compare the distinct Truncated Heat target with FullExactHeat; the Poisson tail $\beta_r$ is distinct from pruning mass $\alpha$.
+> **Figure 2: Sharp pruning and propagation of local heat approximation error.** (A) The adversarial construction places value 0 on retained actions and value $S$ on omitted actions. Measured Exact Heat pruning errors (hollow markers) follow the sharp formula (solid curves) as actual omitted mass changes across six budgets and $S/T_0\in\{1,2,4,8\}$. The maximum absolute gap is $1.11\times10^{-16}$. (B) For smooth values at $S/T_0=4$, top-heat-weight and graph-ball subsets have much smaller median error than equal-cardinality random and farthest subsets; all observed errors remain below the worst-case certificate. (C) On a 25-action cycle with $\theta=2$, normalized Poisson-head kernel error, one-backup error, and fixed-point value error decay with truncation radius and remain below their respective bounds. (D) The same errors plotted against maximum graph-ball size expose the accuracy–local-action tradeoff. Panels A–B prune unnormalized Exact Heat weights and approximate the same Exact Heat target. Panels C–D compare the distinct Truncated Heat target with FullExactHeat; the Poisson tail $\beta_r$ is distinct from pruning mass $\alpha$.
 
 ## 16. Reproducing the experiment
 

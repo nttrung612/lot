@@ -685,7 +685,6 @@ def resolve_pendulum_experiment_config(config: Mapping[str, Any]) -> dict[str, A
         "raw_output": "outputs/raw/pendulum.parquet",
         "summary_output": "outputs/summaries/pendulum.csv",
         "figure_png": "outputs/figures/figure4_pendulum.png",
-        "figure_pdf": "outputs/figures/figure4_pendulum.pdf",
     }
     resolved = copy.deepcopy(defaults)
     for key, value in config.items():

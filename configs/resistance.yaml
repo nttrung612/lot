@@ -36,4 +36,3 @@ visualization_q: bridge_favored
 raw_output: outputs/raw/resistance.parquet
 summary_output: outputs/summaries/resistance.csv
 figure_png: outputs/figures/effective_resistance.png
-figure_pdf: outputs/figures/effective_resistance.pdf

@@ -47,7 +47,6 @@ poisson_truncation:
 raw_output: outputs/raw/pruning.parquet
 summary_output: outputs/summaries/pruning.csv
 figure_png: outputs/figures/figure2_pruning.png
-figure_pdf: outputs/figures/figure2_pruning.pdf
 figure:
   typical_span_over_temperature: 4.0
   truncation_graph_family: cycle

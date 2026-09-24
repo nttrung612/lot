@@ -98,7 +98,6 @@ def resolve_kernel_map_config(config: Mapping[str, Any]) -> dict[str, Any]:
         "raw_output": "outputs/raw/kernel_map.parquet",
         "summary_output": "outputs/summaries/kernel_map.csv",
         "figure_png": "outputs/figures/figure1_kernel_map.png",
-        "figure_pdf": "outputs/figures/figure1_kernel_map.pdf",
         "figure": {
             "alpha": 0.01,
             "poisson_mean": 2.0,

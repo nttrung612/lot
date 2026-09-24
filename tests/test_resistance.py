@@ -122,7 +122,6 @@ def test_resistance_experiment_writes_complete_target_labeled_rows(tmp_path) -> 
             "raw_output": str(tmp_path / "raw.parquet"),
             "summary_output": str(tmp_path / "summary.csv"),
             "figure_png": str(tmp_path / "figure.png"),
-            "figure_pdf": str(tmp_path / "figure.pdf"),
         }
     )
     raw = run_resistance_experiment(config)
@@ -142,11 +141,9 @@ def test_resistance_experiment_writes_complete_target_labeled_rows(tmp_path) -> 
     assert finest["relative_curvature_error"].max() < 2e-5
     assert finest["identity_holds"].astype(bool).all()
     assert pd.to_numeric(raw["laplacian_rank"], errors="coerce").dropna().eq(3).all()
-    png, pdf = plot_resistance_figure(
+    png = plot_resistance_figure(
         raw,
         config,
         png_path=config["figure_png"],
-        pdf_path=config["figure_pdf"],
     )
     assert png.exists() and png.stat().st_size > 0
-    assert pdf.exists() and pdf.stat().st_size > 0

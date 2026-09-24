@@ -48,8 +48,7 @@ uv run python scripts/run_ring_planning.py \
   --set execution.workers=16 \
   --set raw_output=outputs/raw/ring_planning_parallel.parquet \
   --set summary_output=outputs/summaries/ring_planning_parallel.csv \
-  --set figure_png=outputs/figures/figure3_ring_planning_parallel.png \
-  --set figure_pdf=outputs/figures/figure3_ring_planning_parallel.pdf
+  --set figure_png=outputs/figures/figure3_ring_planning_parallel.png
 ```
 
 Only the parent process writes checkpoints, and resumption still uses stable

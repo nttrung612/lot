@@ -57,7 +57,6 @@ def main() -> None:
         summary,
         resolved,
         png_path=resolved["figure_png"],
-        pdf_path=resolved["figure_pdf"],
     )
     pruning = resolve_pruning_config(load_config(arguments.pruning_config))
     pruning_summary = pd.read_csv(pruning["summary_output"])
@@ -65,7 +64,6 @@ def main() -> None:
         pruning_summary,
         pruning,
         png_path=pruning["figure_png"],
-        pdf_path=pruning["figure_pdf"],
     )
     ring = resolve_ring_planning_config(load_config(arguments.ring_planning_config))
     ring_summary = pd.read_csv(ring["summary_output"])
@@ -73,19 +71,17 @@ def main() -> None:
         ring_summary,
         ring,
         png_path=ring["figure_png"],
-        pdf_path=ring["figure_pdf"],
     )
     geometry = resolve_geometry_learning_config(
         load_config(arguments.geometry_learning_config)
     )
-    geometry_summary = pd.read_csv(geometry["summary_output"])
+    geometry_raw = pd.read_parquet(geometry["raw_output"])
     geometry_table = pd.read_csv(geometry["table_output"])
     plot_geometry_learning_figure(
-        geometry_summary,
+        geometry_raw,
         geometry_table,
         geometry,
         png_path=geometry["figure_png"],
-        pdf_path=geometry["figure_pdf"],
     )
     pendulum = resolve_pendulum_experiment_config(
         load_config(arguments.pendulum_config)
@@ -95,7 +91,6 @@ def main() -> None:
         pendulum_summary,
         pendulum,
         png_path=pendulum["figure_png"],
-        pdf_path=pendulum["figure_pdf"],
     )
     resistance = resolve_resistance_config(load_config(arguments.resistance_config))
     resistance_raw = pd.read_parquet(resistance["raw_output"])
@@ -103,7 +98,6 @@ def main() -> None:
         resistance_raw,
         resistance,
         png_path=resistance["figure_png"],
-        pdf_path=resistance["figure_pdf"],
     )
 
 
